@@ -6,6 +6,7 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import Vectors from './components/Vectors';
+import Admin from './components/Admin';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -56,6 +57,7 @@ function App() {
         <Route path="/register" element={user ? <Navigate to="/dashboard" /> : <Register onLogin={login} />} />
         <Route path="/dashboard" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
         <Route path="/vectors" element={user ? <Vectors user={user} /> : <Navigate to="/login" />} />
+        <Route path="/admin" element={user ? <Admin /> : <Navigate to="/login" />} />
         <Route path="/" element={<Navigate to={user ? "/dashboard" : "/login"} />} />
       </Routes>
     </div>
