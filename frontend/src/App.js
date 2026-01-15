@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
-import jwtDecode from 'jwt-decode';
+import { jwtDecode } from 'jwt-decode';
 import Login from './components/Login';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
