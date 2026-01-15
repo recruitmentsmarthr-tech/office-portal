@@ -42,20 +42,15 @@ function Chat() {
 
   return (
     <div className="relative flex flex-col h-full bg-gray-50">
-      {/* Chat Header */}
-      <div className="bg-white shadow-sm p-4 border-b border-gray-200">
-        <h1 className="text-xl font-semibold text-gray-800">Chat With AI</h1>
-      </div>
-
-      {/* Messages Area (Fixed Height with Scroll) */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-[calc(100vh-200px)]">  {/* Fixed max height with scroll */}
+      {/* Messages Area (Fixed Width) */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
         {messages.map((msg, index) => (
           <div
             key={index}
             className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+              className={`w-80 px-4 py-2 rounded-lg ${
                 msg.sender === 'user'
                   ? 'bg-blue-600 text-white'
                   : 'bg-white text-gray-800 shadow-md'
