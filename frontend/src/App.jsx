@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { BrowserRouter } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import Layout from './components/Layout';
 import Login from './components/auth/Login';
