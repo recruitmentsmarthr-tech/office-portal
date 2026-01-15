@@ -12,7 +12,7 @@ function Layout({ user, onLogout, children }) {
   return (
     <div className="flex h-screen">
       {/* Sidebar */}
-      <div className="w-64 bg-[#f0f4f9] border-r border-gray-200 flex flex-col">
+      <div className="w-64 bg-[#f0f4f9] border-r border-gray-200 flex flex-col overflow-y-auto">  {/* Added overflow-y-auto for scrollability */}
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-800">Office Portal</h2>
         </div>

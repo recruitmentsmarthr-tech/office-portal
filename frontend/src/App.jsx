@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { BrowserRouter } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import Layout from './components/Layout';
@@ -12,6 +12,7 @@ import Admin from './components/admin/Admin';
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();  // Added for navigation
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -39,31 +40,30 @@ function App() {
   const logout = () => {
     localStorage.removeItem('token');
     setUser(null);
+    navigate('/login');  // Force navigation to login after logout
   };
 
   if (loading) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
 
   return (
-    <BrowserRouter>
-      <div className="App">
-        {user ? (
-          <Layout user={user} onLogout={logout}>
-            <Routes>
-              <Route path="/dashboard" element={<Dashboard user={user} />} />
-              <Route path="/vectors" element={<Vectors user={user} />} />
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/" element={<Navigate to="/dashboard" />} />
-            </Routes>
-          </Layout>
-        ) : (
+    <div className="App">
+      {user ? (
+        <Layout user={user} onLogout={logout}>
           <Routes>
-            <Route path="/login" element={<Login onLogin={login} />} />
-            <Route path="/register" element={<Register onLogin={login} />} />
-            <Route path="/" element={<Navigate to="/login" />} />
+            <Route path="/dashboard" element={<Dashboard user={user} />} />
+            <Route path="/vectors" element={<Vectors user={user} />} />
+            <Route path="/admin" element={<Admin />} />
+            <Route path="/" element={<Navigate to="/dashboard" />} />
           </Routes>
-        )}
-      </div>
-    </BrowserRouter>
+        </Layout>
+      ) : (
+        <Routes>
+          <Route path="/login" element={<Login onLogin={login} />} />
+          <Route path="/register" element={<Register onLogin={login} />} />
+          <Route path="/" element={<Navigate to="/login" />} />
+        </Routes>
+      )}
+    </div>
   );
 }
 
