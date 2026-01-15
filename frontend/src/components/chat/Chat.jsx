@@ -41,14 +41,14 @@ function Chat() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
+    <div className="relative flex flex-col h-full bg-gray-50">
       {/* Chat Header */}
       <div className="bg-white shadow-sm p-4 border-b border-gray-200">
         <h1 className="text-xl font-semibold text-gray-800">Chat With AI</h1>
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">  {/* Added pb-20 to prevent overlap with fixed input */}
         {messages.map((msg, index) => (
           <div
             key={index}
@@ -67,8 +67,8 @@ function Chat() {
         ))}
       </div>
 
-      {/* Input Area */}
-      <div className="bg-white border-t border-gray-200 p-4">
+      {/* Input Area (Fixed at Bottom) */}
+      <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4">
         <div className="flex space-x-2">
           <input
             type="text"
