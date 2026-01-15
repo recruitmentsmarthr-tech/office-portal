@@ -47,8 +47,8 @@ function Chat() {
         <h1 className="text-xl font-semibold text-gray-800">Chat With AI</h1>
       </div>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
+      {/* Messages Area (Fixed Height with Scroll) */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-[calc(100vh-200px)]">  {/* Fixed max height with scroll */}
         {messages.map((msg, index) => (
           <div
             key={index}
