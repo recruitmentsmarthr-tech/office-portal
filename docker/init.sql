@@ -47,11 +47,11 @@ INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'user' AND p.name IN ('read_vectors', 'write_vectors')
-ON CONFLICT (role_id, permission_id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- 'admin' role gets all permissions ('read_vectors', 'write_vectors', 'admin')
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'admin'
-ON CONFLICT (role_id, permission_id) DO NOTHING;
+ON CONFLICT DO NOTHING;
