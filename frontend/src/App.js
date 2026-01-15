@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
-import Login from './components/Login';
-import Register from './components/Register';
-import Dashboard from './components/Dashboard';
-import Vectors from './components/Vectors';
-import Admin from './components/Admin';
+import Login from './components/auth/Login';
+import Register from './components/auth/Register';
+import Dashboard from './components/dashboard/Dashboard';
+import Vectors from './components/vectors/Vectors';
+import Admin from './components/admin/Admin';
 
 function App() {
   const [user, setUser] = useState(null);
