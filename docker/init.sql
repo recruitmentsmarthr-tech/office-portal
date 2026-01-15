@@ -33,13 +33,13 @@ CREATE TABLE IF NOT EXISTS vectors (
 );
 
 -- Insert initial permissions
-INSERT INTO permissions (name) VALUES ('read_vectors') ON CONFLICT (name) DO NOTHING;
-INSERT INTO permissions (name) VALUES ('write_vectors') ON CONFLICT (name) DO NOTHING;
-INSERT INTO permissions (name) VALUES ('admin') ON CONFLICT (name) DO NOTHING;
+INSERT INTO permissions (name) SELECT 'read_vectors' WHERE NOT EXISTS (SELECT 1 FROM permissions WHERE name = 'read_vectors');
+INSERT INTO permissions (name) SELECT 'write_vectors' WHERE NOT EXISTS (SELECT 1 FROM permissions WHERE name = 'write_vectors');
+INSERT INTO permissions (name) SELECT 'admin' WHERE NOT EXISTS (SELECT 1 FROM permissions WHERE name = 'admin');
 
 -- Insert initial roles
-INSERT INTO roles (name) VALUES ('user') ON CONFLICT (name) DO NOTHING;
-INSERT INTO roles (name) VALUES ('admin') ON CONFLICT (name) DO NOTHING;
+INSERT INTO roles (name) SELECT 'user' WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'user');
+INSERT INTO roles (name) SELECT 'admin' WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'admin');
 
 -- Associate permissions with roles
 -- 'user' role gets 'read_vectors' and 'write_vectors'
