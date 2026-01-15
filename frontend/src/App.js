@@ -45,7 +45,7 @@ function App() {
       <nav>
         {user ? (
           <>
-            <span>Welcome, {user.sub}!</span>
+            <span>Hey, {user.sub}!</span>
             <button onClick={logout}>Logout</button>
           </>
         ) : (
