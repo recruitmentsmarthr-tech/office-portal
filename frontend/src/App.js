@@ -19,7 +19,11 @@ function App() {
     if (token) {
       try {
         const decoded = jwtDecode(token);
-        setUser(decoded);
+        if (decoded.exp * 1000 < Date.now()) {
+          localStorage.removeItem('token');
+        } else {
+          setUser(decoded);
+        }
       } catch (error) {
         localStorage.removeItem('token');
       }
