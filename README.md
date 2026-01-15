@@ -18,7 +18,7 @@ Follow these step-by-step instructions to test the vector management application
 #### Step 2: Verify Services
 - `docker-compose ps`: All "Up" or "Healthy".
 - Test connectivity:
-  - Backend: `curl http://localhost:8000/` → `{"message": "Hello World"}`
+  - Backend: `curl http://localhost:8000/` → `{"message": "Hey, world!"}`
   - Frontend: `curl http://localhost:3000` → HTML content.
 
 #### Step 3: Test Backend API (Using curl or Postman)
@@ -67,7 +67,7 @@ Follow these step-by-step instructions to test the vector management application
 - **Permissions Note**: Default "user" role has vector permissions. For admin actions, create an admin user first.
 
 #### Step 4: Test Frontend UI
-1. Open `http://localhost:3000` in browser.
+1. Open `http://localhost:3000` in your browser.
 2. Register/Login via forms.
 3. Check Dashboard for user info.
 4. Vectors page: Create/fetch vectors.
