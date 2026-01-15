@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Home, Database, Shield, LogOut, User, Menu, X } from 'lucide-react';
 
 function Layout({ user, onLogout, children }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);  // Start open on desktop
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
@@ -14,7 +14,7 @@ function Layout({ user, onLogout, children }) {
   ];
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen">
       {/* Overlay for mobile */}
       {sidebarOpen && (
         <div
@@ -27,7 +27,7 @@ function Layout({ user, onLogout, children }) {
       <div
         className={`fixed top-0 left-0 h-full bg-[#f0f4f9] border-r border-gray-200 flex flex-col overflow-y-auto z-50 transform transition-transform duration-300 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } w-64 md:translate-x-0 md:shadow-none`}
+        } w-64`}
       >
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-800">Office Portal</h2>
@@ -38,7 +38,7 @@ function Layout({ user, onLogout, children }) {
               key={item.name}
               to={item.href}
               className="flex items-center p-3 rounded-lg hover:bg-gray-100 transition-colors"
-              onClick={toggleSidebar}
+              onClick={() => window.innerWidth < 768 && toggleSidebar()}  // Close on mobile link click
             >
               <item.icon size={20} className="mr-3" />
               {item.name}
@@ -61,11 +61,11 @@ function Layout({ user, onLogout, children }) {
       </div>
 
       {/* Main Content */}
-      <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'md:ml-64' : 'md:ml-0'}`}>
-        {/* Top Bar for Mobile Hamburger */}
-        <div className="md:hidden bg-white shadow-sm p-4 flex items-center">
+      <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
+        {/* Top Bar with Toggle */}
+        <div className="bg-white shadow-sm p-4 flex items-center">
           <button onClick={toggleSidebar} className="p-2 rounded-md hover:bg-gray-100">
-            <Menu size={24} />
+            {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
           <h1 className="ml-4 text-xl font-semibold">Office Portal</h1>
         </div>
