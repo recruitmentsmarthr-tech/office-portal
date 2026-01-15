@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS vectors (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
-    embedding VECTOR(384),
+    embedding vector(384),
     vector_metadata JSON
 );
 
