@@ -51,7 +51,7 @@ class Token(BaseModel):
 
 class VectorCreate(BaseModel):
     embedding: List[float]
-    metadata: Optional[dict] = None
+    vector_metadata: Optional[dict] = None
 
 class RoleCreate(BaseModel):
     name: str
@@ -140,7 +140,7 @@ def read_users_me(current_user: User = Depends(get_current_user)):
 def create_vector(vector: VectorCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not check_permission(current_user, "write_vectors", db):
         raise HTTPException(status_code=403, detail="Not enough permissions")
-    new_vector = Vector(user_id=current_user.id, embedding=vector.embedding, metadata=vector.metadata)
+    new_vector = Vector(user_id=current_user.id, embedding=vector.embedding, vector_metadata=vector.vector_metadata)
     db.add(new_vector)
     db.commit()
     db.refresh(new_vector)
@@ -151,7 +151,7 @@ def read_vectors(current_user: User = Depends(get_current_user), db: Session = D
     if not check_permission(current_user, "read_vectors", db):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     vectors = db.query(Vector).filter(Vector.user_id == current_user.id).all()
-    return [{"id": v.id, "embedding": v.embedding, "metadata": v.metadata} for v in vectors]
+    return [{"id": v.id, "embedding": v.embedding, "metadata": v.vector_metadata} for v in vectors]
 
 @app.post("/admin/roles")
 def create_role(role: RoleCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

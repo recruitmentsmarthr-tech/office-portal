@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS vectors (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
     embedding vector(384),
-    metadata JSON
+    vector_metadata JSON
 );
 
 -- Insert initial permissions

@@ -40,4 +40,4 @@ class Vector(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     embedding = Column(Vector(384))
-    metadata = Column(JSON)
+    vector_metadata = Column(JSON)
