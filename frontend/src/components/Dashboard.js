@@ -23,6 +23,7 @@ function Dashboard({ user }) {
       <h2>Dashboard</h2>
       {userInfo && <p>Role: {userInfo.role}</p>}
       <Link to="/vectors">Manage Vectors</Link>
+      {userInfo && userInfo.role === 'admin' && <Link to="/admin">Admin Panel</Link>}
     </div>
   );
 }

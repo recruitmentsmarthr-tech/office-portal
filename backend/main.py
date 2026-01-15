@@ -53,6 +53,15 @@ class VectorCreate(BaseModel):
     embedding: List[float]
     metadata: Optional[dict] = None
 
+class RoleCreate(BaseModel):
+    name: str
+
+class UserCreateAdmin(BaseModel):
+    username: str
+    email: str
+    password: str
+    role_id: int
+
 # Helper functions
 def get_db():
     db = SessionLocal()
@@ -143,6 +152,33 @@ def read_vectors(current_user: User = Depends(get_current_user), db: Session = D
         raise HTTPException(status_code=403, detail="Not enough permissions")
     vectors = db.query(Vector).filter(Vector.user_id == current_user.id).all()
     return [{"id": v.id, "embedding": v.embedding, "metadata": v.metadata} for v in vectors]
+
+@app.post("/admin/roles")
+def create_role(role: RoleCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    db_role = db.query(Role).filter(Role.name == role.name).first()
+    if db_role:
+        raise HTTPException(status_code=400, detail="Role already exists")
+    new_role = Role(name=role.name)
+    db.add(new_role)
+    db.commit()
+    db.refresh(new_role)
+    return {"id": new_role.id, "name": new_role.name}
+
+@app.post("/admin/users")
+def create_user(user: UserCreateAdmin, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    db_user = db.query(User).filter(User.username == user.username).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    hashed_password = get_password_hash(user.password)
+    new_user = User(username=user.username, email=user.email, hashed_password=hashed_password, role_id=user.role_id)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"id": new_user.id, "username": new_user.username}
 
 @app.get("/")
 def read_root():
