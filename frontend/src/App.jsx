@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import Layout from './components/Layout';
 import Login from './components/auth/Login';
@@ -43,24 +44,26 @@ function App() {
   if (loading) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
 
   return (
-    <div className="App">
-      {user ? (
-        <Layout user={user} onLogout={logout}>
+    <BrowserRouter>
+      <div className="App">
+        {user ? (
+          <Layout user={user} onLogout={logout}>
+            <Routes>
+              <Route path="/dashboard" element={<Dashboard user={user} />} />
+              <Route path="/vectors" element={<Vectors user={user} />} />
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/" element={<Navigate to="/dashboard" />} />
+            </Routes>
+          </Layout>
+        ) : (
           <Routes>
-            <Route path="/dashboard" element={<Dashboard user={user} />} />
-            <Route path="/vectors" element={<Vectors user={user} />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/" element={<Navigate to="/dashboard" />} />
+            <Route path="/login" element={<Login onLogin={login} />} />
+            <Route path="/register" element={<Register onLogin={login} />} />
+            <Route path="/" element={<Navigate to="/login" />} />
           </Routes>
-        </Layout>
-      ) : (
-        <Routes>
-          <Route path="/login" element={<Login onLogin={login} />} />
-          <Route path="/register" element={<Register onLogin={login} />} />
-          <Route path="/" element={<Navigate to="/login" />} />
-        </Routes>
-      )}
-    </div>
+        )}
+      </div>
+    </BrowserRouter>
   );
 }
 
