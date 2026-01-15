@@ -9,11 +9,17 @@ function Dashboard({ user }) {
 
   useEffect(() => {
     const fetchUser = async () => {
+      console.log('Fetching user info for dashboard');
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setUserInfo(response.data);
+      try {
+        const response = await axios.get(`${API_BASE_URL}/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log('User info fetched successfully:', response.data);
+        setUserInfo(response.data);
+      } catch (err) {
+        console.error('Failed to fetch user info:', err);
+      }
     };
     fetchUser();
   }, []);

@@ -35,6 +35,7 @@ function App() {
   };
 
   const logout = () => {
+    console.log('Logout button clicked');
     localStorage.removeItem('token');
     setUser(null);
   };
