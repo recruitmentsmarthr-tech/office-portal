@@ -72,7 +72,7 @@ function Layout({ user, onLogout, children }) {
         </div>
 
         {/* Page Content */}
-        <main className="p-6">{children}</main>
+        <main className="flex-1 p-6">{children}</main>
       </div>
     </div>
   );

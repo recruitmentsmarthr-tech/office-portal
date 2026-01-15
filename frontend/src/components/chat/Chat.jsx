@@ -48,7 +48,7 @@ function Chat() {
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">  {/* Added pb-20 to prevent overlap with fixed input */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
         {messages.map((msg, index) => (
           <div
             key={index}
