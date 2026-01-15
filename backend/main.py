@@ -182,4 +182,4 @@ def create_user(user: UserCreateAdmin, current_user: User = Depends(get_current_
 
 @app.get("/")
 def read_root():
-    return {"message": "Yo, world!"}
+    return {"message": "Hey, world!"}
