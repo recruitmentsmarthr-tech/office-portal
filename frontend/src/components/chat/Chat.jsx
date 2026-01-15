@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 
 function Chat() {
   const [messages, setMessages] = useState([
@@ -6,19 +7,32 @@ function Chat() {
   ]);
   const [input, setInput] = useState('');
 
-  const sendMessage = () => {
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
+  const sendMessage = async () => {
     if (input.trim()) {
       // Add user message
       setMessages([...messages, { text: input, sender: 'user' }]);
+      const userMessage = input;
       setInput('');
 
-      // Simulate AI response (replace with real API call later)
-      setTimeout(() => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await axios.post(`${API_BASE_URL}/chat`, { message: userMessage }, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        // Add AI response
         setMessages(prev => [
           ...prev,
-          { text: 'That\'s an interesting question! I\'m here to help with vector management and more.', sender: 'ai' },
+          { text: response.data.response, sender: 'ai' },
         ]);
-      }, 1000);
+      } catch (error) {
+        console.error('Error sending message:', error);
+        setMessages(prev => [
+          ...prev,
+          { text: 'Sorry, I couldn\'t process your message. Please try again.', sender: 'ai' },
+        ]);
+      }
     }
   };
 

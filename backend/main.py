@@ -62,6 +62,9 @@ class UserCreateAdmin(BaseModel):
     password: str
     role_id: int
 
+class ChatRequest(BaseModel):
+    message: str
+
 # Helper functions
 def get_db():
     db = SessionLocal()
@@ -179,6 +182,12 @@ def create_user(user: UserCreateAdmin, current_user: User = Depends(get_current_
     db.commit()
     db.refresh(new_user)
     return {"id": new_user.id, "username": new_user.username}
+
+@app.post("/chat")
+def chat(chat_request: ChatRequest, current_user: User = Depends(get_current_user)):
+    # Simple AI response for demo; replace with actual AI integration (e.g., OpenAI)
+    response_text = f"Hello {current_user.username}! You said: '{chat_request.message}'. How can I assist with your vectors today?"
+    return {"response": response_text}
 
 @app.get("/")
 def read_root():
