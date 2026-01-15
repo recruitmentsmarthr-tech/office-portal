@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS vectors (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
-    embedding VECTOR(384),
+    embedding vector(384),
     metadata JSON
 );
 
@@ -47,11 +47,11 @@ INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'user' AND p.name IN ('read_vectors', 'write_vectors')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- 'admin' role gets all permissions ('read_vectors', 'write_vectors', 'admin')
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'admin'
-ON CONFLICT DO NOTHING;
+ON CONFLICT (role_id, permission_id) DO NOTHING;
