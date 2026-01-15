@@ -1,8 +1,8 @@
-FROM python:3.11-slim
+FROM python:3.11-alpine
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache curl
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
