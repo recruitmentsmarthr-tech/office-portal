@@ -1,5 +1,37 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Create tables if they do not exist
+CREATE TABLE IF NOT EXISTS roles (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS permissions (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+    role_id INTEGER REFERENCES roles(id),
+    permission_id INTEGER REFERENCES permissions(id),
+    PRIMARY KEY (role_id, permission_id)
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR UNIQUE,
+    email VARCHAR UNIQUE,
+    hashed_password VARCHAR,
+    role_id INTEGER REFERENCES roles(id)
+);
+
+CREATE TABLE IF NOT EXISTS vectors (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    embedding VECTOR(384),
+    metadata JSON
+);
+
 -- Insert initial permissions
 INSERT INTO permissions (name) VALUES ('read_vectors') ON CONFLICT (name) DO NOTHING;
 INSERT INTO permissions (name) VALUES ('write_vectors') ON CONFLICT (name) DO NOTHING;
