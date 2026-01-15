@@ -11,8 +11,11 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
+import logging
 
 app = FastAPI()
+
+logging.basicConfig(level=logging.INFO)
 
 # CORS for frontend integration
 app.add_middleware(
