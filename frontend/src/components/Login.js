@@ -24,16 +24,103 @@ function Login({ onLogin }) {
     }
   };
 
+  const containerStyle = {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: '100vh',
+    backgroundColor: '#f4f4f4',
+    fontFamily: 'Arial, sans-serif',
+  };
+
+  const cardStyle = {
+    backgroundColor: '#fff',
+    padding: '40px',
+    borderRadius: '8px',
+    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)',
+    width: '100%',
+    maxWidth: '400px',
+    textAlign: 'center',
+  };
+
+  const titleStyle = {
+    marginBottom: '20px',
+    color: '#333',
+    fontSize: '24px',
+    fontWeight: 'bold',
+  };
+
+  const formStyle = {
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
+  const inputStyle = {
+    padding: '12px',
+    margin: '10px 0',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    fontSize: '16px',
+    outline: 'none',
+    transition: 'border-color 0.3s',
+  };
+
+  const buttonStyle = {
+    padding: '12px',
+    margin: '20px 0 10px 0',
+    backgroundColor: '#007bff',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '16px',
+    cursor: 'pointer',
+    transition: 'background-color 0.3s',
+  };
+
+  const errorStyle = {
+    color: '#d9534f',
+    marginTop: '10px',
+    fontSize: '14px',
+  };
+
+  const linkStyle = {
+    color: '#007bff',
+    textDecoration: 'none',
+    fontSize: '14px',
+    marginTop: '10px',
+    display: 'inline-block',
+  };
+
   return (
-    <div>
-      <h2>Login</h2>
-      <form onSubmit={handleSubmit}>
-        <input type="text" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} required />
-        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        <button type="submit">Login</button>
-      </form>
-      {error && <p>{error}</p>}
-      <Link to="/register">Register</Link>
+    <div style={containerStyle}>
+      <div style={cardStyle}>
+        <h2 style={titleStyle}>Login</h2>
+        <form onSubmit={handleSubmit} style={formStyle}>
+          <input
+            type="text"
+            placeholder="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            style={inputStyle}
+            onFocus={(e) => (e.target.style.borderColor = '#007bff')}
+            onBlur={(e) => (e.target.style.borderColor = '#ddd')}
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={inputStyle}
+            onFocus={(e) => (e.target.style.borderColor = '#007bff')}
+            onBlur={(e) => (e.target.style.borderColor = '#ddd')}
+          />
+          <button type="submit" style={buttonStyle} onMouseOver={(e) => (e.target.style.backgroundColor = '#0056b3')} onMouseOut={(e) => (e.target.style.backgroundColor = '#007bff')}>Login</button>
+        </form>
+        {error && <p style={errorStyle}>{error}</p>}
+        <Link to="/register" style={linkStyle}>Don't have an account? Register here</Link>
+      </div>
     </div>
   );
 }
