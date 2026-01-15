@@ -7,6 +7,7 @@ import Register from './components/auth/Register';
 import Dashboard from './components/dashboard/Dashboard';
 import Vectors from './components/vectors/Vectors';
 import Admin from './components/admin/Admin';
+import Chat from './components/chat/Chat';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -51,6 +52,7 @@ function App() {
           <Routes>
             <Route path="/dashboard" element={<Dashboard user={user} />} />
             <Route path="/vectors" element={<Vectors user={user} />} />
+            <Route path="/chat" element={<Chat />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/" element={<Navigate to="/dashboard" />} />
           </Routes>

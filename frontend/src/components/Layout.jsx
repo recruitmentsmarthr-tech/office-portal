@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Home, Database, Shield, LogOut, User, Menu, X } from 'lucide-react';
+import { Home, Database, Shield, LogOut, User, Menu, X, MessageCircle } from 'lucide-react';
 
 function Layout({ user, onLogout, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);  // Start open on desktop
@@ -10,6 +10,7 @@ function Layout({ user, onLogout, children }) {
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Vectors', href: '/vectors', icon: Database },
+    { name: 'Chat With AI', href: '/chat', icon: MessageCircle },
     ...(user?.role === 'admin' ? [{ name: 'Admin', href: '/admin', icon: Shield }] : []),
   ];
 
