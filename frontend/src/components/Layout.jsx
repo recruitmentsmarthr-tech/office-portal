@@ -38,7 +38,7 @@ function Layout({ user, onLogout, children }) {
               }`}
               title={!sidebarOpen ? item.name : undefined}  // Tooltip for collapsed state
             >
-              <item.icon size={sidebarOpen ? 20 : 24} className={sidebarOpen ? 'mr-3' : ''} />
+              <item.icon size={sidebarOpen ? 20 : 32} className={sidebarOpen ? 'mr-3' : ''} />
               {sidebarOpen && <span>{item.name}</span>}
             </Link>
           ))}
