@@ -38,14 +38,14 @@ function Layout({ user, onLogout, children }) {
               }`}
               title={!sidebarOpen ? item.name : undefined}  // Tooltip for collapsed state
             >
-              <item.icon size={20} className="mr-3" />
+              <item.icon size={20} className={sidebarOpen ? 'mr-3' : ''} />
               {sidebarOpen && <span>{item.name}</span>}
             </Link>
           ))}
         </nav>
         <div className="p-4 border-t border-gray-200">
           <div className={`flex items-center mb-4 ${sidebarOpen ? 'justify-start' : 'justify-center'}`}>
-            <User size={24} className="mr-3 text-gray-600" />
+            <User size={24} className={sidebarOpen ? 'mr-3 text-gray-600' : 'text-gray-600'} />
             {sidebarOpen && <span className="text-gray-800 font-medium">{user?.sub || 'User'}</span>}
           </div>
           <button
@@ -54,7 +54,7 @@ function Layout({ user, onLogout, children }) {
               sidebarOpen ? 'justify-start' : 'justify-center'
             }`}
           >
-            <LogOut size={18} className="mr-2" />
+            <LogOut size={18} className={sidebarOpen ? 'mr-2' : ''} />
             {sidebarOpen && <span>Logout</span>}
           </button>
         </div>
@@ -62,9 +62,12 @@ function Layout({ user, onLogout, children }) {
 
       {/* Main Content */}
       <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-16'}`}>
-        {/* Top Bar (Optional, can be removed if not needed) */}
-        <div className="bg-white shadow-sm p-4">
-          <h1 className="text-xl font-semibold">Office Portal</h1>
+        {/* Top Bar with Persistent Toggle */}
+        <div className="bg-white shadow-sm p-4 flex items-center">
+          <button onClick={toggleSidebar} className="p-2 rounded-md hover:bg-gray-100">
+            {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+          <h1 className="ml-4 text-xl font-semibold">Office Portal</h1>
         </div>
 
         {/* Page Content */}
