@@ -38,7 +38,7 @@ function Layout({ user, onLogout, children }) {
               }`}
               title={!sidebarOpen ? item.name : undefined}  // Tooltip for collapsed state
             >
-              <item.icon size={sidebarOpen ? 20 : 32} className={sidebarOpen ? 'mr-3' : ''} />
+              <item.icon size={sidebarOpen ? 20 : 40} className={sidebarOpen ? 'mr-3' : ''} />
               {sidebarOpen && <span>{item.name}</span>}
             </Link>
           ))}
@@ -50,8 +50,8 @@ function Layout({ user, onLogout, children }) {
           </div>
           <button
             onClick={onLogout}
-            className={`w-full bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center ${
-              sidebarOpen ? 'justify-start' : 'justify-center'
+            className={`bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center ${
+              sidebarOpen ? 'w-full py-2 px-4' : 'py-1 px-2'
             }`}
           >
             <LogOut size={sidebarOpen ? 18 : 18} className={sidebarOpen ? 'mr-2' : ''} />
@@ -62,9 +62,12 @@ function Layout({ user, onLogout, children }) {
 
       {/* Main Content */}
       <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-16'}`}>
-        {/* Top Bar (No Toggle Button) */}
-        <div className="bg-white shadow-sm p-4">
-          <h1 className="text-xl font-semibold">Office Portal</h1>
+        {/* Top Bar with Persistent Toggle */}
+        <div className="bg-white shadow-sm p-4 flex items-center">
+          <button onClick={toggleSidebar} className="p-2 rounded-md hover:bg-gray-100">
+            {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+          <h1 className="ml-4 text-xl font-semibold">Office Portal</h1>
         </div>
 
         {/* Page Content */}
