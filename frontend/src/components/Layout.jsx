@@ -30,8 +30,11 @@ function Layout({ user, onLogout, children }) {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } w-64`}
       >
-        <div className="p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-800">Office Portal</h2>
+          <button onClick={toggleSidebar} className="p-2 rounded-md hover:bg-gray-100">
+            {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
         <nav className="flex-1 p-6 space-y-4">
           {navItems.map((item) => (
@@ -63,10 +66,10 @@ function Layout({ user, onLogout, children }) {
 
       {/* Main Content */}
       <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
-        {/* Top Bar with Toggle */}
-        <div className="bg-white shadow-sm p-4 flex items-center">
+        {/* Top Bar for Mobile Hamburger */}
+        <div className="md:hidden bg-white shadow-sm p-4 flex items-center">
           <button onClick={toggleSidebar} className="p-2 rounded-md hover:bg-gray-100">
-            {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+            <Menu size={24} />
           </button>
           <h1 className="ml-4 text-xl font-semibold">Office Portal</h1>
         </div>
