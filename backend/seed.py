@@ -16,29 +16,53 @@ def get_password_hash(password):
 
 def seed():
     db = SessionLocal()
-    # Create permissions
-    read_vectors = Permission(name="read_vectors")
-    write_vectors = Permission(name="write_vectors")
-    admin_perm = Permission(name="admin")
-    db.add(read_vectors)
-    db.add(write_vectors)
-    db.add(admin_perm)
-    # Create roles
-    user_role = Role(name="user", permissions=[read_vectors, write_vectors])
-    admin_role = Role(name="admin", permissions=[read_vectors, write_vectors, admin_perm])
-    db.add(user_role)
-    db.add(admin_role)
-    db.commit()
-    # Create initial admin user
-    admin_user = User(
-        username="admin",
-        email="admin@example.com",
-        hashed_password=get_password_hash("admin"),
-        role_id=admin_role.id
-    )
-    db.add(admin_user)
+
+    def get_or_create(session, model, **kwargs):
+        instance = session.query(model).filter_by(**kwargs).first()
+        if instance:
+            return instance, False
+        else:
+            instance = model(**kwargs)
+            session.add(instance)
+            session.flush() # flush to get the ID for relationships
+            return instance, True
+
+    # Get-or-create permissions
+    read_vectors, _ = get_or_create(db, Permission, name="read_vectors")
+    write_vectors, _ = get_or_create(db, Permission, name="write_vectors")
+    admin_perm, _ = get_or_create(db, Permission, name="admin")
+
+    # Get-or-create roles
+    user_role, _ = get_or_create(db, Role, name="user")
+    admin_role, _ = get_or_create(db, Role, name="admin")
+
+    # Associate permissions with roles idempotently
+    if read_vectors not in user_role.permissions:
+        user_role.permissions.append(read_vectors)
+    if write_vectors not in user_role.permissions:
+        user_role.permissions.append(write_vectors)
+
+    if read_vectors not in admin_role.permissions:
+        admin_role.permissions.append(read_vectors)
+    if write_vectors not in admin_role.permissions:
+        admin_role.permissions.append(write_vectors)
+    if admin_perm not in admin_role.permissions:
+        admin_role.permissions.append(admin_perm)
+
+    # Get-or-create admin user
+    admin_user = db.query(User).filter_by(username="admin").first()
+    if not admin_user:
+        admin_user = User(
+            username="admin",
+            email="admin@example.com",
+            hashed_password=get_password_hash("admin"),
+            role_id=admin_role.id
+        )
+        db.add(admin_user)
+
     db.commit()
     db.close()
+    print("Database seeding complete.")
 
 if __name__ == "__main__":
     seed()

@@ -62,8 +62,30 @@ class UserCreateAdmin(BaseModel):
     password: str
     role_id: int
 
+class UserUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    role_id: Optional[int] = None
+
 class ChatRequest(BaseModel):
     message: str
+
+class UserDisplay(BaseModel):
+    id: int
+    username: str
+    email: str
+    role_id: int
+
+    class Config:
+        orm_mode = True # To allow ORM models to be directly returned
+
+class RoleDisplay(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        orm_mode = True # To allow ORM models to be directly returned
 
 # Helper functions
 def get_db():
@@ -132,7 +154,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     user = db.query(User).filter(User.username == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
-    access_token = create_access_token(data={"sub": user.username})
+    access_token = create_access_token(data={"sub": user.username, "role": user.role.name if user.role else None})
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/users/me")
@@ -169,6 +191,50 @@ def create_role(role: RoleCreate, current_user: User = Depends(get_current_user)
     db.refresh(new_role)
     return {"id": new_role.id, "name": new_role.name}
 
+@app.get("/admin/roles", response_model=List[RoleDisplay])
+def read_roles(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    roles = db.query(Role).all()
+    return roles
+
+@app.put("/admin/roles/{role_id}", response_model=RoleDisplay)
+def update_role(role_id: int, role_update: RoleCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    
+    db_role = db.query(Role).filter(Role.id == role_id).first()
+    if not db_role:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    db_role.name = role_update.name
+    db.add(db_role)
+    db.commit()
+    db.refresh(db_role)
+    return db_role
+
+@app.delete("/admin/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_role(role_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+        
+    db_role = db.query(Role).filter(Role.id == role_id).first()
+    if not db_role:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    # Prevent deletion of 'admin' and 'user' roles
+    if db_role.name in ['admin', 'user']:
+        raise HTTPException(status_code=400, detail=f"Cannot delete essential system role: '{db_role.name}'.")
+
+    # Prevent deletion if role is in use
+    users_with_role = db.query(User).filter(User.role_id == role_id).count()
+    if users_with_role > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete role. It is currently assigned to {users_with_role} user(s).")
+
+    db.delete(db_role)
+    db.commit()
+    return
+
 @app.post("/admin/users")
 def create_user(user: UserCreateAdmin, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not check_permission(current_user, "admin", db):
@@ -183,9 +249,67 @@ def create_user(user: UserCreateAdmin, current_user: User = Depends(get_current_
     db.refresh(new_user)
     return {"id": new_user.id, "username": new_user.username}
 
+@app.get("/admin/users", response_model=List[UserDisplay])
+def read_users(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    users = db.query(User).all()
+    return users
+
+@app.put("/admin/users/{user_id}", response_model=UserDisplay)
+def update_user(user_id: int, user_update: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    update_data = user_update.dict(exclude_unset=True)
+    if "password" in update_data and update_data["password"]:
+        hashed_password = get_password_hash(update_data["password"])
+        update_data["hashed_password"] = hashed_password
+        del update_data["password"]
+    else:
+        if "password" in update_data:
+            del update_data["password"]
+
+    for key, value in update_data.items():
+        setattr(db_user, key, value)
+
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+import asyncio
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+# ... (rest of the imports)
+
+# ... (rest of the code)
+
+@app.delete("/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+        
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if db_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Admins cannot delete themselves.")
+
+    db.delete(db_user)
+    db.commit()
+    return
+
 @app.post("/chat")
-def chat(chat_request: ChatRequest, current_user: User = Depends(get_current_user)):
-    # Simple AI response for demo; replace with actual AI integration (e.g., OpenAI)
+async def chat(chat_request: ChatRequest, current_user: User = Depends(get_current_user)):
+    # Simple AI response for demo; this is non-blocking.
+    await asyncio.sleep(0) # Ensures the event loop yields, can help in some edge cases.
     response_text = f"Hello {current_user.username}! You said: '{chat_request.message}'. How can I assist with your vectors today?"
     return {"response": response_text}
 
