@@ -1,6 +1,7 @@
-fastapi==0.95.2
-uvicorn[standard]==0.24.0
-sqlalchemy==1.4.53
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.7.0
+sqlalchemy
 psycopg2-binary==2.9.9
 pgvector==0.2.4
 python-jose[cryptography]==3.3.0
@@ -8,3 +9,8 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
 python-decouple==3.8
 bcrypt==3.2.2
+pypdf>=3.17.0
+langchain==0.3.0
+alembic>=1.13.1
+python-dotenv>=1.0.0
+requests>=2.26.0

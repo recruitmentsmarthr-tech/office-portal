@@ -1,3 +1,39 @@
+/* Import Google Font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Apply Tailwind base styles */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Define global styles and custom utility classes */
+@layer base {
+  body {
+    @apply bg-gray-100 text-gray-800 antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-2xl shadow-lg;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  }
+
+  .btn {
+    @apply px-5 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 ease-in-out;
+  }
+  
+  .btn-primary {
+    @apply btn bg-blue-600 text-white;
+  }
+
+  .btn-primary:hover {
+    @apply bg-blue-700 shadow-md;
+    transform: translateY(-1px);
+  }
+
+  .input-field {
+    @apply w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200;
+  }
+}

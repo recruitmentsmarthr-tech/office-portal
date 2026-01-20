@@ -5,14 +5,15 @@ import Layout from './components/Layout';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import Dashboard from './components/dashboard/Dashboard';
-import Vectors from './components/vectors/Vectors';
+import DocumentIngestion from './components/vectors/DocumentIngestion';
 import Admin from './components/admin/Admin';
 import Chat from './components/chat/Chat';
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();  // Added for navigation
+  const [currentSessionId, setCurrentSessionId] = useState(null); // New state for current chat session
+  const navigate = useNavigate();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -51,8 +52,8 @@ function App() {
         <Layout user={user} onLogout={logout}>
           <Routes>
             <Route path="/dashboard" element={<Dashboard user={user} />} />
-            <Route path="/vectors" element={<Vectors user={user} />} />
-            <Route path="/chat" element={<Chat />} />
+            <Route path="/vectors" element={<DocumentIngestion user={user} />} />
+            <Route path="/chat" element={<Chat user={user} currentSessionId={currentSessionId} setCurrentSessionId={setCurrentSessionId} />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/" element={<Navigate to="/dashboard" />} />
           </Routes>

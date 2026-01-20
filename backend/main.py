@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from models import Base, User, Role, Permission, Vector
+from models import Base, User, Role, Permission, Document, DocumentStatus, Chat, ChatMessage, MessageFeedback
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
@@ -12,6 +12,13 @@ from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+from pathlib import Path
+import uuid
+
+# Import the RAG pipeline functions
+from rag_pipeline import ingest_document_pipeline
+
+from contextlib import asynccontextmanager
 
 app = FastAPI()
 
@@ -20,7 +27,7 @@ logging.basicConfig(level=logging.INFO)
 # CORS for frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Adjust for production
+    allow_origins=["http://localhost:3000","http://192.168.20.108:3000","http://192.168.0.108:3000"],  # Adjust for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,7 +37,8 @@ app.add_middleware(
 DATABASE_URL = f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base.metadata.create_all(bind=engine)  # Remove in prod
+# Base.metadata.create_all(bind=engine)  # Managed by Alembic now
+
 
 # Auth setup
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -70,6 +78,34 @@ class UserUpdate(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: Optional[int] = None
+
+class DocumentDisplay(BaseModel):
+    id: int
+    filename: str
+    upload_date: datetime
+    status: DocumentStatus
+
+    class Config:
+        orm_mode = True
+
+class ChatSessionDisplay(BaseModel):
+    id: int
+    user_id: int
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class ChatMessageDisplay(BaseModel):
+    id: int
+    chat_id: int
+    role: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
 
 class UserDisplay(BaseModel):
     id: int
@@ -129,6 +165,15 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 def check_permission(user: User, permission_name: str, db: Session):
     if not user.role:
         return False
+    
+    # Specific logic for ingest_documents
+    if permission_name == "ingest_documents":
+        return user.role.name == "admin" # Only admin can ingest for now
+    
+    # Specific logic for read_documents
+    if permission_name == "read_documents":
+        return user.role.name in ["admin", "user"] # Both admin and regular users can read documents
+    
     permissions = [p.name for p in user.role.permissions]
     return permission_name in permissions
 
@@ -160,6 +205,71 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 @app.get("/users/me")
 def read_users_me(current_user: User = Depends(get_current_user)):
     return {"username": current_user.username, "role": current_user.role.name if current_user.role else None}
+
+class IngestResponse(BaseModel):
+    message: str
+    document_id: int
+    filename: str
+
+@app.post("/api/ingest", response_model=IngestResponse)
+async def ingest_document(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not check_permission(current_user, "ingest_documents", db):
+        raise HTTPException(status_code=403, detail="Not enough permissions to ingest documents")
+
+    # Create a document entry
+    new_document = Document(filename=file.filename, status=DocumentStatus.PENDING)
+    db.add(new_document)
+    db.commit()
+    db.refresh(new_document)
+
+    # Save file temporarily
+    # Create a unique filename to avoid collisions
+    unique_filename = f"{new_document.id}_{uuid.uuid4()}_{file.filename}"
+    temp_file_path = Path("/tmp") / unique_filename
+    temp_file_path.parent.mkdir(parents=True, exist_ok=True) # Ensure /tmp exists within the container
+
+    try:
+        with open(temp_file_path, "wb") as buffer:
+            buffer.write(await file.read())
+    except Exception as e:
+        db.delete(new_document) # Rollback document creation
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {e}")
+
+    # Add ingestion to background tasks
+    # Pass SessionLocal directly, as it will create a new session for the background task
+    background_tasks.add_task(ingest_document_pipeline, new_document.id, str(temp_file_path), SessionLocal())
+
+    return IngestResponse(
+        message="Document received and processing started in background.",
+        document_id=new_document.id,
+        filename=file.filename,
+    )
+
+@app.get("/api/documents", response_model=List[DocumentDisplay])
+def list_documents(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not check_permission(current_user, "read_documents", db):
+        raise HTTPException(status_code=403, detail="Not enough permissions to read documents")
+    documents = db.query(Document).order_by(Document.upload_date.desc()).all()
+    return documents
+
+@app.delete("/api/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(document_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not check_permission(current_user, "ingest_documents", db): # Using ingest_documents permission for delete as well
+        raise HTTPException(status_code=403, detail="Not enough permissions to delete documents")
+    
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    db.delete(document)
+    db.commit()
+    return
 
 @app.post("/vectors")
 def create_vector(vector: VectorCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -288,30 +398,96 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 # ... (rest of the imports)
 
-# ... (rest of the code)
+# Import RAG chat functions
+from rag_chat import (
+    get_or_create_chat,
+    save_message,
+    get_chat_history,
+    normalize_text,
+    generate_embedding,
+    perform_vector_search,
+    construct_llm_prompt,
+    get_llm_response,
+)
 
-@app.delete("/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not check_permission(current_user, "admin", db):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-        
-    db_user = db.query(User).filter(User.id == user_id).first()
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
+@app.post("/chat")
+def chat(
+    chat_request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # 1. Get or create chat session
+    chat_session = get_or_create_chat(current_user.id, db, session_id=chat_request.session_id)
 
-    if db_user.id == current_user.id:
-        raise HTTPException(status_code=400, detail="Admins cannot delete themselves.")
+    # 2. Save user message
+    save_message(chat_session.id, "user", chat_request.message, db)
 
-    db.delete(db_user)
+    # 3. Normalize and embed user query
+    normalized_query = normalize_text(chat_request.message)
+    query_embedding = generate_embedding(normalized_query)
+
+    # 4. Perform vector search for context
+    retrieved_chunks = perform_vector_search(query_embedding, db)
+
+    # 5. Get chat history (for context in LLM)
+    history = get_chat_history(chat_session.id, db, limit=5) # Last 5 messages
+
+    # 6. Construct LLM prompt
+    llm_prompt = construct_llm_prompt(chat_request.message, retrieved_chunks, history)
+
+    # 7. Get LLM response
+    llm_response = get_llm_response(llm_prompt)
+
+    # 8. Save AI response
+    save_message(chat_session.id, "assistant", llm_response, db)
+
+    return {"session_id": chat_session.id, "response": llm_response}
+
+@app.get("/api/chat/sessions", response_model=List[ChatSessionDisplay])
+def get_chat_sessions(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Returns all non-deleted chat sessions for the current user.
+    """
+    sessions = (
+        db.query(Chat)
+        .filter(Chat.user_id == current_user.id, Chat.is_deleted == False)
+        .order_by(Chat.created_at.desc())
+        .all()
+    )
+    return sessions
+
+@app.get("/api/chat/history/{session_id}", response_model=List[ChatMessageDisplay])
+def get_chat_history_route(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Verify chat belongs to user (or admin permission)
+    chat = db.query(Chat).filter(Chat.id == session_id, Chat.user_id == current_user.id).first()
+    if not chat and not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not authorized to view this chat history")
+    
+    history = get_chat_history(session_id, db, limit=50) # Fetch more history for display
+    return history
+
+
+@app.delete("/api/chat/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_chat_session(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Soft deletes a chat session.
+    """
+    chat = db.query(Chat).filter(Chat.id == session_id, Chat.user_id == current_user.id).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    chat.is_deleted = True
     db.commit()
     return
 
-@app.post("/chat")
-async def chat(chat_request: ChatRequest, current_user: User = Depends(get_current_user)):
-    # Simple AI response for demo; this is non-blocking.
-    await asyncio.sleep(0) # Ensures the event loop yields, can help in some edge cases.
-    response_text = f"Hello {current_user.username}! You said: '{chat_request.message}'. How can I assist with your vectors today?"
-    return {"response": response_text}
 
 @app.get("/")
 def read_root():

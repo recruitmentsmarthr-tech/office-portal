@@ -2,8 +2,10 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+
   "dependencies": {
     "axios": "^1.6.0",
+    "date-fns": "^2.30.0",
     "jwt-decode": "^4.0.0",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
@@ -18,7 +20,8 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "test:ci": "CI=true npm test -- --watchAll=false --passWithNoTests"
+    "test:ci": "CI=true npm test -- --watchAll=false --passWithNoTests",
+    "cache-buster": "echo"
   },
   "eslintConfig": {
     "extends": [

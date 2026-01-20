@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { LogIn } from 'lucide-react';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -8,9 +9,12 @@ function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError('');
     try {
       const response = await axios.post(`${API_BASE_URL}/token`, new URLSearchParams({
         username,
@@ -20,42 +24,72 @@ function Login({ onLogin }) {
       });
       onLogin(response.data.access_token);
     } catch (err) {
-      setError('Invalid credentials');
+      setError('Invalid username or password. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 border border-gray-200">
-        <h2 className="text-2xl font-semibold text-gray-800 text-center mb-6">Welcome Back</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="text"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-            className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-          />
-          <button
-            type="submit"
-            className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 transition duration-200 font-medium"
-          >
-            Sign In
-          </button>
-        </form>
-        {error && <p className="text-red-500 text-center mt-4">{error}</p>}
-        <p className="text-center mt-6">
-          <Link to="/register" className="text-blue-600 hover:text-blue-800 transition duration-200">
-            New here? Create an account
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+      <div className="max-w-md w-full">
+        <div className="card p-8">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-800">Sign In</h1>
+            <p className="text-gray-500 mt-2">Welcome back to your Office Portal.</p>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+                Username
+              </label>
+              <input
+                id="username"
+                type="text"
+                placeholder="e.g., admin"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className="input-field"
+                disabled={loading}
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="input-field"
+                disabled={loading}
+              />
+            </div>
+            {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+            <div>
+              <button
+                type="submit"
+                className="w-full btn-primary flex items-center justify-center"
+                disabled={loading}
+              >
+                {loading ? (
+                  <LogIn className="animate-spin mr-2" size={20} />
+                ) : (
+                  'Sign In'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+        <p className="text-center text-sm text-gray-600 mt-6">
+          New here?{' '}
+          <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
+            Create an account
           </Link>
         </p>
       </div>

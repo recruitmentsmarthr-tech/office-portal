@@ -9,8 +9,8 @@ function Layout({ user, onLogout, children }) {
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: Home },
-    { name: 'Vectors', href: '/vectors', icon: Database },
     { name: 'Chat With AI', href: '/chat', icon: MessageCircle },
+    ...(user && user.role === 'admin' ? [{ name: 'Vectors', href: '/vectors', icon: Database }] : []),
     ...(user?.role === 'admin' ? [{ name: 'Admin', href: '/admin', icon: Shield }] : []),
   ];
 
@@ -33,7 +33,7 @@ function Layout({ user, onLogout, children }) {
         </div>
 
         {/* Nav Links */}
-        <nav className="flex-1 px-2 py-4 space-y-2">
+        <nav className="flex-1 px-2 py-4 space-y-2 overflow-y-auto">
           {navItems.map((item) => (
             <NavLink
               key={item.name}
