@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO)
 # CORS for frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000","http://192.168.20.108:3000","http://192.168.0.108:3000"],  # Adjust for production
+    allow_origins=["*"],  # Adjust for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
