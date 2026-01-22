@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Database, Shield, LogOut, User, Menu, X, MessageCircle } from 'lucide-react';
+import { Home, Database, Shield, LogOut, User, Menu, X, MessageCircle, FileText } from 'lucide-react'; // Added FileText
+import { useAuth } from '../context/AuthContext'; // New import
 
-function Layout({ user, onLogout, children }) {
+function Layout({ children }) { // user and onLogout are no longer props
+  const { user, logout } = useAuth(); // Use the hook
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
@@ -10,6 +12,7 @@ function Layout({ user, onLogout, children }) {
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Chat With AI', href: '/chat', icon: MessageCircle },
+    { name: 'Transcribe', href: '/transcribe', icon: FileText }, // New item
     ...(user && user.role === 'admin' ? [{ name: 'Vectors', href: '/vectors', icon: Database }] : []),
     ...(user?.role === 'admin' ? [{ name: 'Admin', href: '/admin', icon: Shield }] : []),
   ];
@@ -67,7 +70,7 @@ function Layout({ user, onLogout, children }) {
             )}
           </div>
           <button
-            onClick={onLogout}
+            onClick={logout} // Use logout from hook
             title="Logout"
             className={`bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors w-full flex items-center ${
               sidebarOpen ? 'py-2 px-4' : 'py-3 justify-center'

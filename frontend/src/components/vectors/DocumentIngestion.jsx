@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { format } from 'date-fns';
+import { useAuth } from '../../context/AuthContext'; // New import
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
-function DocumentIngestion({ user }) {
+function DocumentIngestion() { // Removed user from props
+  const { user, token } = useAuth(); // Use the hook to get user and token
   const [selectedFile, setSelectedFile] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -15,10 +17,10 @@ function DocumentIngestion({ user }) {
   const canIngest = user && user.role === 'admin'; // Based on backend permission check
 
   const fetchDocuments = useCallback(async () => {
+    if (!token) return; // Only fetch if token is available
     setLoading(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
       const response = await axios.get(`${API_BASE_URL}/api/documents`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -29,7 +31,7 @@ function DocumentIngestion({ user }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [token]); // Add token to dependencies
 
   useEffect(() => {
     fetchDocuments();
@@ -48,11 +50,14 @@ function DocumentIngestion({ user }) {
       setError('Please select a file to upload.');
       return;
     }
+    if (!token) {
+        setError('You must be logged in to upload files.');
+        return;
+    }
 
     setLoading(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
       const formData = new FormData();
       formData.append('file', selectedFile);
 
@@ -76,10 +81,11 @@ function DocumentIngestion({ user }) {
     if (!window.confirm('Are you sure you want to delete this document?')) {
       return;
     }
+    if (!token) return;
+
     setLoading(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
       await axios.delete(`${API_BASE_URL}/api/documents/${documentId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -91,6 +97,7 @@ function DocumentIngestion({ user }) {
       setLoading(false);
     }
   };
+
 
   const handleDragOver = (event) => {
     event.preventDefault();

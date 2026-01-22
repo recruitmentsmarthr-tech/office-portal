@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from models import Base, User, Role, Permission, Document, DocumentStatus, Chat, ChatMessage, MessageFeedback
+from models import Base, User, Role, Permission, Document, DocumentStatus, Chat, ChatMessage, MessageFeedback, TranscriptionJob, TranscriptionJobStatus # Added TranscriptionJob, TranscriptionJobStatus
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
@@ -9,11 +9,14 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Union # Added Union for typing
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from pathlib import Path
 import uuid
+from celery import Celery # New import for Celery
+from tasks import transcribe_audio_task, generate_minutes_task # New: Import Celery tasks
+
 
 # Import the RAG pipeline functions
 from rag_pipeline import ingest_document_pipeline
@@ -22,7 +25,15 @@ from contextlib import asynccontextmanager
 
 app = FastAPI()
 
+# Celery setup
+celery_app = Celery(
+    "office_portal",
+    broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
+    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
+)
+
 logging.basicConfig(level=logging.INFO)
+
 
 # CORS for frontend integration
 app.add_middleware(
@@ -38,6 +49,10 @@ DATABASE_URL = f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Base.metadata.create_all(bind=engine)  # Managed by Alembic now
+
+# Directory for uploaded audio files
+UPLOAD_DIR = Path("/app/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Auth setup
@@ -122,6 +137,27 @@ class RoleDisplay(BaseModel):
 
     class Config:
         orm_mode = True # To allow ORM models to be directly returned
+
+class TranscriptionJobDisplay(BaseModel):
+    id: int
+    user_id: int
+    original_filename: str
+    status: TranscriptionJobStatus
+    progress_percent: int
+    progress_text: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class TranscriptionJobDetailDisplay(TranscriptionJobDisplay):
+    full_transcript: Optional[str] = None
+    meeting_minutes: Optional[str] = None
+    error_message: Optional[str] = None
+
+    class Config:
+        orm_mode = True
 
 # Helper functions
 def get_db():
@@ -250,6 +286,108 @@ async def ingest_document(
         document_id=new_document.id,
         filename=file.filename,
     )
+
+@app.post("/api/transcribe", response_model=TranscriptionJobDisplay)
+async def start_transcription(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Check for existing active jobs for this user
+    existing_job = (
+        db.query(TranscriptionJob)
+        .filter(
+            TranscriptionJob.user_id == current_user.id,
+            TranscriptionJob.status.in_([TranscriptionJobStatus.PENDING, TranscriptionJobStatus.PROCESSING]),
+        )
+        .first()
+    )
+    if existing_job:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"You already have a transcription job in progress (ID: {existing_job.id}, Status: {existing_job.status.value}). Please wait for it to complete or fail before starting a new one.",
+        )
+
+    # Create a new job entry in the database
+    new_job = TranscriptionJob(
+        user_id=current_user.id,
+        original_filename=file.filename,
+        status=TranscriptionJobStatus.PENDING,
+        progress_text="File uploaded, awaiting processing.",
+    )
+    db.add(new_job)
+    db.commit()
+    db.refresh(new_job)
+
+    # Save the uploaded audio file to the persistent UPLOAD_DIR
+    # Use the job ID to make the filename unique and linkable to the job
+    file_extension = Path(file.filename).suffix
+    saved_file_name = f"{new_job.id}_{uuid.uuid4()}{file_extension}"
+    file_path = UPLOAD_DIR / saved_file_name
+
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(await file.read())
+    except Exception as e:
+        # Update job status to failed and roll back
+        new_job.status = TranscriptionJobStatus.FAILED
+        new_job.error_message = f"Failed to save uploaded file: {e}"
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {e}")
+
+    # Trigger the Celery task here
+    from tasks import transcribe_audio_task # Import the task
+    transcribe_audio_task.delay(new_job.id, str(file_path))
+
+    return new_job
+
+@app.get("/api/transcribe/status/{job_id}", response_model=TranscriptionJobDetailDisplay)
+def get_transcription_job_status(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = db.query(TranscriptionJob).filter(TranscriptionJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Transcription job not found")
+
+    if job.user_id != current_user.id and not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not authorized to view this job's status")
+
+    return job
+
+@app.get("/api/transcribe/jobs", response_model=List[TranscriptionJobDisplay])
+def list_transcription_jobs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    jobs = db.query(TranscriptionJob).filter(TranscriptionJob.user_id == current_user.id).order_by(TranscriptionJob.created_at.desc()).all()
+    return jobs
+
+@app.post("/api/generate-minutes/{job_id}", status_code=status.HTTP_202_ACCEPTED)
+async def generate_minutes(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = db.query(TranscriptionJob).filter(TranscriptionJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Transcription job not found")
+
+    if job.user_id != current_user.id and not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not authorized to generate minutes for this job")
+    
+    if job.status not in [TranscriptionJobStatus.COMPLETED]:
+        raise HTTPException(status_code=400, detail="Minutes can only be generated for completed transcription jobs.")
+
+    if not job.full_transcript:
+        raise HTTPException(status_code=400, detail="No full transcript available for this job to generate minutes.")
+
+    # Trigger the Celery task for minutes generation
+    from tasks import generate_minutes_task # Import the task
+    generate_minutes_task.delay(job.id)
+
+    return {"message": "Minutes generation started in the background.", "job_id": job.id}
 
 @app.get("/api/documents", response_model=List[DocumentDisplay])
 def list_documents(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

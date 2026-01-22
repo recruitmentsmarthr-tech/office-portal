@@ -5,6 +5,7 @@ import Modal from '../common/Modal';
 import ConfirmationDialog from '../common/ConfirmationDialog';
 import UserForm from './UserForm';
 import RolesManager from './RolesManager';
+import { useAuth } from '../../context/AuthContext'; // New import
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -42,17 +43,23 @@ function Admin() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const { token } = useAuth(); // Use the hook to get token
+
   const clearMessages = () => { setError(''); setSuccess(''); };
 
   const fetchData = useCallback(async (endpoint, setter, entityName) => {
-    const token = localStorage.getItem('token');
+    // Check if token is available before making API call
+    if (!token) {
+        setError("Authentication token not found.");
+        return;
+    }
     try {
       const response = await axios.get(`${API_BASE_URL}/admin/${endpoint}`, { headers: { Authorization: `Bearer ${token}` } });
       setter(response.data);
     } catch (err) {
       setError(`Failed to fetch ${entityName}: ${err.response?.data?.detail || err.message}`);
     }
-  }, []);
+  }, [token]); // Add token to dependencies
 
   useEffect(() => {
     fetchData('users', setUsers, 'users');
@@ -98,7 +105,11 @@ function Admin() {
     setConfirmOpen(false);
     setUserModalOpen(false);
     clearMessages();
-    const token = localStorage.getItem('token');
+    // Use token from useAuth hook
+    if (!token) {
+        setError("Authentication token not found.");
+        return;
+    }
     const url = modalMode === 'create'
       ? `${API_BASE_URL}/admin/users`
       : `${API_BASE_URL}/admin/users/${currentUser.id}`;
@@ -125,7 +136,11 @@ function Admin() {
   const executeDeleteUser = async (userId) => {
     setConfirmOpen(false);
     clearMessages();
-    const token = localStorage.getItem('token');
+    // Use token from useAuth hook
+    if (!token) {
+        setError("Authentication token not found.");
+        return;
+    }
     try {
       await axios.delete(`${API_BASE_URL}/admin/users/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
       setSuccess('User deleted successfully.');
@@ -148,7 +163,11 @@ function Admin() {
   const executeCreateRole = async (roleName) => {
     setConfirmOpen(false);
     clearMessages();
-    const token = localStorage.getItem('token');
+    // Use token from useAuth hook
+    if (!token) {
+        setError("Authentication token not found.");
+        return;
+    }
     try {
       await axios.post(`${API_BASE_URL}/admin/roles`, { name: roleName }, { headers: { Authorization: `Bearer ${token}` } });
       setSuccess('Role created successfully.');
@@ -170,7 +189,11 @@ function Admin() {
   const executeUpdateRole = async (role) => {
     setConfirmOpen(false);
     clearMessages();
-    const token = localStorage.getItem('token');
+    // Use token from useAuth hook
+    if (!token) {
+        setError("Authentication token not found.");
+        return;
+    }
     try {
       await axios.put(`${API_BASE_URL}/admin/roles/${role.id}`, { name: role.name }, { headers: { Authorization: `Bearer ${token}` } });
       setSuccess('Role updated successfully.');
@@ -192,7 +215,11 @@ function Admin() {
   const executeDeleteRole = async (roleId) => {
     setConfirmOpen(false);
     clearMessages();
-    const token = localStorage.getItem('token');
+    // Use token from useAuth hook
+    if (!token) {
+        setError("Authentication token not found.");
+        return;
+    }
     try {
       await axios.delete(`${API_BASE_URL}/admin/roles/${roleId}`, { headers: { Authorization: `Bearer ${token}` } });
       setSuccess('Role deleted successfully.');

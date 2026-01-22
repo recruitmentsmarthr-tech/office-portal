@@ -14,3 +14,6 @@ langchain==0.3.0
 alembic>=1.13.1
 python-dotenv>=1.0.0
 requests>=2.26.0
+celery==5.3.6 # Using a specific version for stability
+redis==5.0.1 # Using a specific version for stability
+flower==2.0.1 # For Celery monitoring

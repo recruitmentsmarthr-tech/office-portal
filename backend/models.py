@@ -49,6 +49,30 @@ class DocumentChunk(Base):
     document = relationship("Document", back_populates="chunks")
 
 
+class TranscriptionJobStatus(enum.Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class TranscriptionJob(Base):
+    __tablename__ = "transcription_jobs"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    original_filename = Column(String, nullable=False)
+    status = Column(SAEnum(TranscriptionJobStatus), nullable=False, default=TranscriptionJobStatus.PENDING)
+    progress_percent = Column(Integer, default=0)
+    progress_text = Column(String, default="Starting...")
+    full_transcript = Column(Text)
+    meeting_minutes = Column(Text)
+    error_message = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    user = relationship("User") # Establish relationship with User model
+
+
 class Chat(Base):
     __tablename__ = "chats"
     id = Column(Integer, primary_key=True)

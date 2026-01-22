@@ -1,5 +1,6 @@
 import React from 'react';
 import { FileText, Database, Users } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext'; // New import
 
 function StatCard({ icon, title, value, description }) {
   return (
@@ -38,7 +39,8 @@ function RecentDocumentItem({ name, date, status }) {
     );
 }
 
-function Dashboard({ user }) {
+function Dashboard() { // Removed user from props
+  const { user } = useAuth(); // Use the hook to get user
   // Mock data for demonstration purposes
   const recentDocuments = [
     { name: 'Q4_Financial_Report.pdf', date: 'Jan 15, 2026', status: 'COMPLETED' },

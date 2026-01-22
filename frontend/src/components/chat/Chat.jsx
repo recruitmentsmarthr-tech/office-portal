@@ -4,6 +4,7 @@ import { Send, Bot, Loader2, Plus, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { format } from 'date-fns';
+import { useAuth } from '../../context/AuthContext'; // New import
 
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
@@ -49,7 +50,8 @@ const Message = ({ msg }) => {
 };
 
 
-function Chat({ currentSessionId, setCurrentSessionId, user }) {
+function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from props
+  const { user, token } = useAuth(); // Use the hook to get user and token
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -69,7 +71,7 @@ function Chat({ currentSessionId, setCurrentSessionId, user }) {
     setLoadingSessions(true);
     setSessionsError('');
     try {
-      const token = localStorage.getItem('token');
+      // Use token from useAuth hook
       const response = await axios.get(`${API_BASE_URL}/api/chat/sessions`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -80,7 +82,7 @@ function Chat({ currentSessionId, setCurrentSessionId, user }) {
     } finally {
       setLoadingSessions(false);
     }
-  }, [user]);
+  }, [user, token]); // Add token to dependencies
 
   useEffect(() => {
     fetchChatSessions();
@@ -95,7 +97,7 @@ function Chat({ currentSessionId, setCurrentSessionId, user }) {
     setIsLoading(true);
     setError('');
     try {
-      const token = localStorage.getItem('token');
+      // Use token from useAuth hook
       const response = await axios.get(`${API_BASE_URL}/api/chat/history/${sessionId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -109,7 +111,7 @@ function Chat({ currentSessionId, setCurrentSessionId, user }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [token]); // Add token to dependencies
 
   const handleNewChat = () => {
     // Optimistic UI update
@@ -135,7 +137,7 @@ function Chat({ currentSessionId, setCurrentSessionId, user }) {
     setRecentChats(prev => prev.filter(chat => chat.id !== sessionId));
 
     try {
-        const token = localStorage.getItem('token');
+        // Use token from useAuth hook
         await axios.delete(`${API_BASE_URL}/api/chat/sessions/${sessionId}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
@@ -183,7 +185,7 @@ function Chat({ currentSessionId, setCurrentSessionId, user }) {
     }
 
     try {
-      const token = localStorage.getItem('token');
+      // Use token from useAuth hook
       const payload = {
         message: text,
         session_id: sessionIdToUse, 
