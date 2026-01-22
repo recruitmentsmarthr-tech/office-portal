@@ -25,6 +25,23 @@ from contextlib import asynccontextmanager
 
 app = FastAPI()
 
+@app.on_event("startup")
+def startup_event():
+    db = SessionLocal()
+    try:
+        stale_jobs = db.query(TranscriptionJob).filter(
+            TranscriptionJob.status.in_([TranscriptionJobStatus.PENDING, TranscriptionJobStatus.PROCESSING])
+        ).all()
+        
+        if stale_jobs:
+            logging.info(f"Found {len(stale_jobs)} stale jobs on startup. Marking as FAILED.")
+            for job in stale_jobs:
+                job.status = TranscriptionJobStatus.FAILED
+                job.error_message = "Job failed due to a server restart."
+            db.commit()
+    finally:
+        db.close()
+
 # Celery setup
 celery_app = Celery(
     "office_portal",
@@ -158,6 +175,14 @@ class TranscriptionJobDetailDisplay(TranscriptionJobDisplay):
 
     class Config:
         orm_mode = True
+
+class TranscriptUpdate(BaseModel):
+    new_transcript: str
+
+class MinutesGenerationRequest(BaseModel):
+    meeting_date: str
+    meeting_time: str
+    tone: str # e.g., "CEO", "SHORT_TO_THE_POINT"
 
 # Helper functions
 def get_db():
@@ -293,20 +318,32 @@ async def start_transcription(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Check for existing active jobs for this user
-    existing_job = (
+    # --- Global Lock Implementation ---
+    # Check for any active job across all users
+    active_job = (
         db.query(TranscriptionJob)
         .filter(
-            TranscriptionJob.user_id == current_user.id,
-            TranscriptionJob.status.in_([TranscriptionJobStatus.PENDING, TranscriptionJobStatus.PROCESSING]),
+            TranscriptionJob.status.in_([TranscriptionJobStatus.PENDING, TranscriptionJobStatus.PROCESSING])
         )
         .first()
     )
-    if existing_job:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"You already have a transcription job in progress (ID: {existing_job.id}, Status: {existing_job.status.value}). Please wait for it to complete or fail before starting a new one.",
-        )
+
+    if active_job:
+        # Check if the active job is stale (e.g., older than 30 minutes)
+        timeout_threshold = datetime.now(active_job.updated_at.tzinfo) - timedelta(minutes=45)
+        if active_job.updated_at < timeout_threshold:
+            # Job is stale, mark as failed and proceed
+            logging.warning(f"Found and failed stale job (ID: {active_job.id}) that was stuck in '{active_job.status.value}' state.")
+            active_job.status = TranscriptionJobStatus.FAILED
+            active_job.error_message = "Task timed out and was marked as failed."
+            db.commit()
+        else:
+            # Job is genuinely active, block new job creation
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Another user is currently using this transcription service. Please come back later.",
+            )
+    # --- End Global Lock ---
 
     # 1. Create a preliminary job entry to get an ID
     new_job = TranscriptionJob(
@@ -433,9 +470,31 @@ def cancel_transcription_job(
     
     return job
 
+@app.put("/api/transcribe/jobs/{job_id}/transcript", response_model=TranscriptionJobDetailDisplay)
+def update_transcript(
+    job_id: int,
+    transcript_update: TranscriptUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = db.query(TranscriptionJob).filter(TranscriptionJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Transcription job not found")
+
+    if job.user_id != current_user.id and not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not authorized to edit this job's transcript")
+
+    job.full_transcript = transcript_update.new_transcript
+    job.updated_at = datetime.now(job.created_at.tzinfo) # Manually update timestamp
+    db.commit()
+    db.refresh(job)
+
+    return job
+
 @app.post("/api/generate-minutes/{job_id}", status_code=status.HTTP_202_ACCEPTED)
 async def generate_minutes(
     job_id: int,
+    request: MinutesGenerationRequest, # New: Accepts MinutesGenerationRequest body
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -446,15 +505,15 @@ async def generate_minutes(
     if job.user_id != current_user.id and not check_permission(current_user, "admin", db):
         raise HTTPException(status_code=403, detail="Not authorized to generate minutes for this job")
     
-    if job.status not in [TranscriptionJobStatus.COMPLETED]:
-        raise HTTPException(status_code=400, detail="Minutes can only be generated for completed transcription jobs.")
+    if job.status not in [TranscriptionJobStatus.COMPLETED, TranscriptionJobStatus.FAILED]:
+        raise HTTPException(status_code=400, detail="Minutes can only be generated for completed or failed transcription jobs.")
 
     if not job.full_transcript:
         raise HTTPException(status_code=400, detail="No full transcript available for this job to generate minutes.")
 
     # Trigger the Celery task for minutes generation
     from tasks import generate_minutes_task # Import the task
-    generate_minutes_task.delay(job.id)
+    generate_minutes_task.delay(job.id, request.meeting_date, request.meeting_time, request.tone) # New: Pass additional parameters
 
     return {"message": "Minutes generation started in the background.", "job_id": job.id}
 

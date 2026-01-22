@@ -47,6 +47,135 @@ if not GEMINI_API_KEY:
 GEMINI_TRANSCRIPTION_MODEL = "gemini-2.5-pro" # As per user's request
 UPLOAD_DIR = Path("/app/uploads") # Matches the FastAPI app
 
+# --- Prompt Templates for Minutes Generation ---
+CEO_TONE_PROMPT_TEMPLATE = """ROLE:
+You are a high-level Chief Technology Officer (CTO) or CEO summarizing a technical strategy meeting. Your tone is authoritative, decisive, and strategic. You are not just recording notes; you are defining the company's direction.
+
+INPUT DATA:
+- Raw transcript of a technical meeting.
+- Speakers are labeled (e.g., Person 1, Speaker 3).
+
+INSTRUCTIONS:
+1. SPEAKER MAPPING: Identify unique speakers. If a name is mentioned (e.g., "Ko Kyaw Soe Lin"), link it to the speaker label immediately.
+2. CONTENT FILTER: Filter out all small talk. Focus only on high-value technical decisions, security architecture, and operational workflows.
+3. LANGUAGE STYLE (HYBRID BURMESE):
+   - **Tone:** Professional, Commanding, and Direct (CEO Style).
+   - **Vocabulary:** Use Formal Burmese grammar, but KEEP ALL TECHNICAL TERMS IN ENGLISH (e.g., "Infrastructure", "Certificate Authority", "Access Control").
+   - **Do not say:** "We discussed about the server."
+   - **Say:** "Server Infrastructure ၏ လုံခြုံရေးကို မြှင့်တင်ရန် အောက်ပါအတိုင်း ဆုံးဖြတ်သည်။" (Decisive).
+4. OUTPUT FORMAT: Generate two distinct sections separated by "---".
+
+OUTPUT TEMPLATE:
+
+# မဟာဗျူဟာအစည်းအဝေးမှတ်တမ်း (Strategic Meeting Minutes)
+
+**ခေါင်းစဉ်:** {title_burmese}
+**ရက်စွဲ:** {meeting_date}
+**အချိန်:** {meeting_time}
+**တက်ရောက်သူများ:**
+* [Speaker Label] (Name if found)
+...
+
+## ၁။ မဟာဗျူဟာ ရည်မှန်းချက် (Strategic Objective)
+[One powerful sentence in Burmese summarizing the goal. Example: "လုပ်ငန်းလွှဲပြောင်းမှု လုပ်ငန်းစဉ်တွင် Security Gap မရှိစေရန်နှင့် Infrastructure တစ်ခုလုံးကို Centralized Control စနစ်ဖြင့် စီမံခန့်ခွဲရန်။"]
+
+## ၂။ အဓိက ဆွေးနွေးချက်များ (Key Discussions)
+* **Identity & Access Management:** [Summary using strong Burmese + English terms]
+* **Operational Monitoring:** [Summary]
+* **Data Integrity & Backup:** [Summary]
+
+## ၃။ အတည်ပြုချက်များနှင့် ရှေ့ဆက်လုပ်ငန်းစဉ်များ (Decisions & Action Plan)
+| စဉ် | ဆုံးဖြတ်ချက် / လုပ်ဆောင်ရန် | တာဝန်ခံ |
+|:---|:---|:---|
+| 1 | [Action Item in decisive language] | [Who] |
+| 2 | [Action Item] | [Who] |
+
+---
+
+# Executive Summary (English Version)
+
+**Title:** {title_english}
+**Attendees:** [List]
+
+## 1. Strategic Objective
+[Direct, CEO-level summary]
+
+## 2. Key Discussions
+[Bullet points]
+
+## 3. Executive Decisions & Roadmap
+| No. | Action Item | Owner |
+|:---|:---|:---|
+| 1 | [Action Item] | [Who] |
+
+[END OF OUTPUT]
+
+TRANSCRIPT TO PROCESS:
+{transcript}
+"""
+
+SHORT_TO_THE_POINT_PROMPT_TEMPLATE = """ROLE:
+You are an efficient executive assistant focused on speed and clarity. Your job is to summarize technical meetings into short, easy-to-read bullet points.
+
+INPUT DATA:
+- Raw transcript of a technical meeting.
+- Speakers are labeled (e.g., Person 1).
+
+INSTRUCTIONS:
+1. SPEAKER MAPPING: Map speaker labels to real names if mentioned (e.g., "Person 1 (Ko Kyaw Soe Lin)").
+2. BREVITY IS KEY:
+   - Do not write long paragraphs. Use bullet points.
+   - Remove all fluff, small talk, and polite filler.
+   - Get straight to the point.
+3. LANGUAGE STYLE (SIMPLE & DIRECT):
+   - **Tone:** Easy to read, sharp, and professional.
+   - **Burmese:** Use clear, simple business Burmese.
+   - **Technical Terms:** DO NOT TRANSLATE technical terms (Keep "Infrastructure", "Server", "Backup", "Log" in English).
+4. FORMATTING: Produce TWO versions separated by "---".
+
+OUTPUT TEMPLATE:
+
+# အစည်းအဝေး အနှစ်ချုပ် (Meeting Brief)
+
+**ခေါင်းစဉ်:** {title_burmese}
+**ရက်စွဲ:** {meeting_date}
+**အချိန်:** {meeting_time}
+**တက်ရောက်သူ:** [List of Names/Labels]
+
+## ၁။ အဓိကအချက်များ (Key Updates)
+* **[Topic]:** [1 sentence summary in Burmese with English terms].
+* **[Topic]:** [1 sentence summary].
+* **[Topic]:** [1 sentence summary].
+
+## ၂။ ဆုံးဖြတ်ချက်နှင့် တာဝန်များ (Action Items)
+| No. | လုပ်ဆောင်ရန် (Action) | တာဝန်ခံ (Who) |
+|:---|:---|:---|
+| 1 | [Short Action Item] | [Name] |
+| 2 | [Short Action Item] | [Name] |
+
+---
+
+# Executive Brief (English)
+
+**Title:** {title_english}
+**Attendees:** [List]
+
+## 1. Key Updates
+* **[Topic]:** [1 sentence summary].
+* **[Topic]:** [1 sentence summary].
+
+## 2. Action Items
+| No. | Action | Who |
+|:---|:---|:---|
+| 1 | [Short Action Item] | [Name] |
+| 2 | [Short Action Item] | [Name] |
+
+[END OF OUTPUT]
+
+TRANSCRIPT TO PROCESS:
+{transcript}
+"""
+
 # --- Helper for Google File API (Gemini) ---
 def upload_file_to_gemini(file_path: Path, mime_type: str, display_name: str) -> str:
     """Uploads a file to the Gemini File API and returns its URI."""
@@ -263,7 +392,7 @@ def transcribe_audio_task(self, job_id: int, audio_file_path: str):
             db.close()
 
 @celery_app.task(bind=True)
-def generate_minutes_task(self, job_id: int):
+def generate_minutes_task(self, job_id: int, meeting_date: str, meeting_time: str, tone: str):
     db = None
     job = None
     try:
@@ -291,6 +420,31 @@ def generate_minutes_task(self, job_id: int):
         job.progress_text = "Generating meeting minutes..."
         db.commit()
 
+        # Select prompt template based on tone
+        if tone == "CEO":
+            prompt_template = CEO_TONE_PROMPT_TEMPLATE
+            title_burmese = "Infrastructure လွှဲပြောင်းမှုနှင့် လုံခြုံရေးခေတ်မီအောင် ဆောင်ရွက်ခြင်းဆိုင်ရာ မဟာဗျူဟာအစည်းအဝေး"
+            title_english = "Infrastructure Handover & Security Modernization Strategic Meeting"
+        elif tone == "SHORT_TO_THE_POINT":
+            prompt_template = SHORT_TO_THE_POINT_PROMPT_TEMPLATE
+            title_burmese = "နည်းပညာအစည်းအဝေး အနှစ်ချုပ်"
+            title_english = "Technical Meeting Brief"
+        else:
+            logger.error(f"Invalid tone '{tone}' for minutes generation for job {job_id}.")
+            job.status = TranscriptionJobStatus.FAILED
+            job.error_message = (job.error_message or "") + f"Invalid tone '{tone}' provided for minutes generation.\n"
+            db.commit()
+            return
+        
+        # Construct the final prompt
+        final_prompt = prompt_template.format(
+            title_burmese=title_burmese,
+            title_english=title_english,
+            meeting_date=meeting_date,
+            meeting_time=meeting_time,
+            transcript=job.full_transcript
+        )
+
         # Minutes generation request to Gemini REST API
         minutes_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_TRANSCRIPTION_MODEL}:generateContent" # Use the same model
         minutes_headers = {
@@ -300,8 +454,7 @@ def generate_minutes_task(self, job_id: int):
 
         minutes_payload = json.dumps({
             "contents": [{"parts": [
-                {"text": "Elite bilingual secretary. Format: 1.ရည်ရွယ်ချက် 2.ဆွေးနွေးချက် 3.ဆုံးဖြတ်ချက်(Table) 4.အထွေထွေ."},
-                {"text": f"Generate formal minutes from the following transcript:\n{job.full_transcript}"}
+                {"text": final_prompt} # Use the constructed prompt
             ]}]
         })
 

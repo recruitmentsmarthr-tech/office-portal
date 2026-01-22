@@ -5,7 +5,7 @@ import {
     Play,
     FileText,
     List,
-    RefreshCw,
+    Save,
     Download,
     BookOpen,
     ArrowRight,
@@ -17,6 +17,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ConfirmationDialog from '../../components/common/ConfirmationDialog';
+import Modal from '../../components/common/Modal';
 
 function Transcribe() {
     const { user, token } = useAuth();
@@ -34,6 +35,13 @@ function Transcribe() {
     const [replaceSpeaker, setReplaceSpeaker] = useState('');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [jobToDeleteId, setJobToDeleteId] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const [showMinutesModal, setShowMinutesModal] = useState(false);
+    const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+    const [meetingDate, setMeetingDate] = useState(new Date().toISOString().split('T')[0]);
+    const [meetingTime, setMeetingTime] = useState('');
+    const [selectedTone, setSelectedTone] = useState('CEO');
 
     const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -173,14 +181,15 @@ function Transcribe() {
     };
 
     const handleGenerateMinutes = async () => {
-        if (!currentJobDetails || currentJobDetails.status !== 'COMPLETED') {
-            setError("Minutes can only be generated for completed jobs.");
+        if (!currentJobDetails || !['COMPLETED', 'FAILED'].includes(currentJobDetails.status)) {
+            setError("Minutes can only be generated for completed or failed jobs.");
             return;
         }
         if (!token) return;
 
         setIsGeneratingMinutes(true);
         setError(null);
+        setShowMinutesModal(false);
 
         try {
             const response = await fetch(`${API_BASE_URL}/api/generate-minutes/${currentJobDetails.id}`, {
@@ -188,7 +197,12 @@ function Transcribe() {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                body: JSON.stringify({
+                    meeting_date: meetingDate,
+                    meeting_time: meetingTime,
+                    tone: selectedTone
+                })
             });
 
             if (!response.ok) {
@@ -208,6 +222,31 @@ function Transcribe() {
         } finally {
             setIsGeneratingMinutes(false);
         }
+    };
+
+    const handleOpenGenerateMinutesModal = () => {
+        if (!currentJobDetails || !['COMPLETED', 'FAILED'].includes(currentJobDetails.status)) {
+            setError("Minutes can only be generated for completed or failed jobs.");
+            return;
+        }
+        if (currentJobDetails.meeting_minutes) {
+            setShowRegenerateConfirm(true);
+        } else {
+            setShowMinutesModal(true);
+        }
+    };
+
+    const handleConfirmRegenerate = () => {
+        setShowRegenerateConfirm(false);
+        setShowMinutesModal(true);
+    };
+
+    const handleCloseRegenerateConfirm = () => {
+        setShowRegenerateConfirm(false);
+    };
+
+    const handleCloseMinutesModal = () => {
+        setShowMinutesModal(false);
     };
 
     const downloadText = (content, filename) => {
@@ -230,6 +269,33 @@ function Transcribe() {
         const regex = new RegExp(findSpeaker, 'g');
         const newTranscript = editedTranscript.replace(regex, replaceSpeaker);
         setEditedTranscript(newTranscript);
+    };
+
+    const handleSaveTranscript = async () => {
+        if (!currentJobDetails || !token) return;
+        setIsSaving(true);
+        setError(null);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/transcribe/jobs/${currentJobDetails.id}/transcript`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ new_transcript: editedTranscript })
+            });
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.detail || "Failed to save transcript.");
+            }
+            fetchJobDetails(currentJobDetails.id);
+        } catch(err) {
+            setError(err.message);
+            console.error("Error saving transcript:", err);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleDelete = (jobId) => {
@@ -312,6 +378,8 @@ function Transcribe() {
         job.status.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const canGenerateMinutes = currentJobDetails && ['COMPLETED', 'FAILED'].includes(currentJobDetails.status);
+
     return (
         <div className="p-6">
             <h1 className="text-3xl font-bold text-gray-800 mb-6">Audio Transcription & Minutes</h1>
@@ -354,8 +422,7 @@ function Transcribe() {
                 </div>
             </div>
 
-            <div className="flex space-x-6 mb-6"> {/* This is the top row containing Jobs and Transcription */}
-                {/* Left Panel: Transcription Tasks */}
+            <div className="flex space-x-6 mb-6">
                 <div className="w-1/3 bg-white shadow-md rounded-lg p-4 flex flex-col h-[500px] overflow-hidden flex-shrink-0">
                     <h2 className="text-xl font-semibold text-gray-700 mb-4 flex items-center shrink-0">
                         <List size={20} className="mr-2" /> My Transcription Jobs
@@ -418,7 +485,6 @@ function Transcribe() {
                     </div>
                 </div>
 
-                {/* Right Panel: Transcription */}
                 <div className="w-2/3 bg-white shadow-md rounded-lg p-4 flex flex-col h-[500px] overflow-hidden flex-shrink-0">
                     <h2 className="text-xl font-semibold text-gray-700 mb-4 flex items-center shrink-0">
                         <FileText size={20} className="mr-2" /> Transcription
@@ -464,14 +530,26 @@ function Transcribe() {
                         >
                         </textarea>
                     </div>
-                    {currentJobDetails?.full_transcript && (
-                        <button
-                            onClick={() => downloadText(currentJobDetails.full_transcript, `transcript_${currentJobDetails.id}.txt`)}
-                            className="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 flex items-center justify-center w-fit self-end transition-colors duration-200 shrink-0"
-                        >
-                            <Download size={18} className="mr-2" /> Download Transcript
-                        </button>
-                    )}
+                    <div className="mt-4 flex justify-end space-x-2 shrink-0">
+                        {currentJobDetails?.full_transcript && (
+                            <>
+                                <button
+                                    onClick={handleSaveTranscript}
+                                    disabled={isSaving}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center justify-center w-fit self-end transition-colors duration-200 disabled:bg-gray-400"
+                                >
+                                    {isSaving ? <Loader size={18} className="animate-spin mr-2" /> : <Save size={18} className="mr-2" />}
+                                    Save Transcript
+                                </button>
+                                <button
+                                    onClick={() => downloadText(editedTranscript, `transcript_${currentJobDetails.id}.txt`)}
+                                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 flex items-center justify-center w-fit self-end transition-colors duration-200"
+                                >
+                                    <Download size={18} className="mr-2" /> Download Transcript
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -497,15 +575,15 @@ function Transcribe() {
                 </div>
                 <div className="mt-4 flex justify-end space-x-4 shrink-0">
                     <button
-                        onClick={handleGenerateMinutes}
-                        disabled={currentJobDetails?.status !== 'COMPLETED' || isGeneratingMinutes || currentJobDetails?.meeting_minutes}
+                        onClick={handleOpenGenerateMinutesModal}
+                        disabled={!canGenerateMinutes || isGeneratingMinutes}
                         className={`
                             px-4 py-2 rounded-md font-semibold flex items-center transition-colors duration-200
-                            ${(!currentJobDetails || currentJobDetails.status !== 'COMPLETED' || isGeneratingMinutes || currentJobDetails.meeting_minutes) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}
+                            ${(!canGenerateMinutes || isGeneratingMinutes) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}
                         `}
                     >
                         {isGeneratingMinutes ? <Loader size={18} className="animate-spin mr-2" /> : <ArrowRight size={18} className="mr-2" />}
-                        Generate Minutes
+                        {currentJobDetails?.meeting_minutes ? 'Regenerate Minutes' : 'Generate Minutes'}
                     </button>
                     {currentJobDetails?.meeting_minutes && (
                         <button
@@ -528,6 +606,69 @@ function Transcribe() {
                 <p>Are you sure you want to delete transcription job <strong>{jobToDeleteId}</strong>?</p>
                 <p className="text-sm text-gray-500">This action cannot be undone.</p>
             </ConfirmationDialog>
+
+            <ConfirmationDialog
+                isOpen={showRegenerateConfirm}
+                onClose={handleCloseRegenerateConfirm}
+                onConfirm={handleConfirmRegenerate}
+                title="Confirm Regeneration"
+                confirmationText="overwrite"
+            >
+                <p>Are you sure you want to regenerate the minutes? This will overwrite the existing content.</p>
+            </ConfirmationDialog>
+
+            <Modal isOpen={showMinutesModal} onClose={handleCloseMinutesModal} title="Generate Meeting Minutes">
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="meetingDate" className="block text-sm font-medium text-gray-700">Meeting Date</label>
+                        <input
+                            type="date"
+                            id="meetingDate"
+                            value={meetingDate}
+                            onChange={(e) => setMeetingDate(e.target.value)}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="meetingTime" className="block text-sm font-medium text-gray-700">Meeting Times</label>
+                        <input
+                            type="text"
+                            id="meetingTime"
+                            value={meetingTime}
+                            onChange={(e) => setMeetingTime(e.target.value)}
+                            placeholder="e.g., 9:00 AM - 10:30 AM"
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="tone" className="block text-sm font-medium text-gray-700">Tone of Voice</label>
+                        <select
+                            id="tone"
+                            value={selectedTone}
+                            onChange={(e) => setSelectedTone(e.target.value)}
+                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                        >
+                            <option value="CEO">CEO</option>
+                            <option value="SHORT_TO_THE_POINT">Short to the Point</option>
+                        </select>
+                    </div>
+                    <div className="flex justify-end space-x-4">
+                        <button
+                            onClick={handleCloseMinutesModal}
+                            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleGenerateMinutes}
+                            disabled={isGeneratingMinutes}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+                        >
+                            {isGeneratingMinutes ? 'Generating...' : 'Confirm & Generate'}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }
