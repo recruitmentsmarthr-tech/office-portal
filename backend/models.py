@@ -54,6 +54,7 @@ class TranscriptionJobStatus(enum.Enum):
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
 
 
 class TranscriptionJob(Base):
@@ -61,12 +62,14 @@ class TranscriptionJob(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     original_filename = Column(String, nullable=False)
+    saved_file_name = Column(String, nullable=True) # New field to store the actual filename on disk
     status = Column(SAEnum(TranscriptionJobStatus), nullable=False, default=TranscriptionJobStatus.PENDING)
     progress_percent = Column(Integer, default=0)
     progress_text = Column(String, default="Starting...")
     full_transcript = Column(Text)
     meeting_minutes = Column(Text)
     error_message = Column(Text)
+    celery_task_id = Column(String, nullable=True) # New field to store Celery task ID
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 

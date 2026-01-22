@@ -308,7 +308,7 @@ async def start_transcription(
             detail=f"You already have a transcription job in progress (ID: {existing_job.id}, Status: {existing_job.status.value}). Please wait for it to complete or fail before starting a new one.",
         )
 
-    # Create a new job entry in the database
+    # 1. Create a preliminary job entry to get an ID
     new_job = TranscriptionJob(
         user_id=current_user.id,
         original_filename=file.filename,
@@ -319,11 +319,15 @@ async def start_transcription(
     db.commit()
     db.refresh(new_job)
 
-    # Save the uploaded audio file to the persistent UPLOAD_DIR
-    # Use the job ID to make the filename unique and linkable to the job
+    # 2. Generate the filename using the new job's ID
     file_extension = Path(file.filename).suffix
     saved_file_name = f"{new_job.id}_{uuid.uuid4()}{file_extension}"
     file_path = UPLOAD_DIR / saved_file_name
+    
+    # 3. Update the job with the generated filename
+    new_job.saved_file_name = saved_file_name
+    db.commit()
+    db.refresh(new_job)
 
     try:
         with open(file_path, "wb") as buffer:
@@ -337,7 +341,10 @@ async def start_transcription(
 
     # Trigger the Celery task here
     from tasks import transcribe_audio_task # Import the task
-    transcribe_audio_task.delay(new_job.id, str(file_path))
+    task_result = transcribe_audio_task.delay(new_job.id, str(file_path))
+    new_job.celery_task_id = task_result.id # Store the Celery task ID
+    db.commit() # Commit the task ID to the database after dispatching
+    db.refresh(new_job)
 
     return new_job
 
@@ -363,6 +370,68 @@ def list_transcription_jobs(
 ):
     jobs = db.query(TranscriptionJob).filter(TranscriptionJob.user_id == current_user.id).order_by(TranscriptionJob.created_at.desc()).all()
     return jobs
+
+@app.delete("/api/transcribe/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_transcription_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = db.query(TranscriptionJob).filter(TranscriptionJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Transcription job not found")
+
+    if job.user_id != current_user.id and not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not authorized to delete this job")
+
+    # Delete the associated audio file if it exists
+    if job.saved_file_name:
+        file_path = UPLOAD_DIR / job.saved_file_name
+        if file_path.exists():
+            try:
+                os.remove(file_path)
+            except OSError as e:
+                logging.error(f"Error deleting file {file_path}: {e}")
+                # Don't fail the API call if file deletion fails, just log it.
+
+    db.delete(job)
+    db.commit()
+    return
+
+@app.post("/api/transcribe/jobs/{job_id}/cancel", response_model=TranscriptionJobDisplay)
+def cancel_transcription_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = db.query(TranscriptionJob).filter(TranscriptionJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Transcription job not found")
+
+    if job.user_id != current_user.id and not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not authorized to cancel this job")
+
+    if job.status not in [TranscriptionJobStatus.PENDING, TranscriptionJobStatus.PROCESSING]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job is not cancellable. Current status: {job.status.value}",
+        )
+
+    if job.celery_task_id:
+        # Revoke the Celery task
+        # terminate=True will kill the worker process that is currently executing the task
+        # This is often necessary for long-running tasks that don't check for revocation frequently
+        celery_app.control.revoke(job.celery_task_id, terminate=True)
+        logging.info(f"Revoked Celery task {job.celery_task_id} for job {job.id}")
+    else:
+        logging.warning(f"Job {job.id} has no celery_task_id to revoke.")
+
+    job.status = TranscriptionJobStatus.CANCELLED
+    job.error_message = "Job cancelled by user."
+    db.commit()
+    db.refresh(job)
+    
+    return job
 
 @app.post("/api/generate-minutes/{job_id}", status_code=status.HTTP_202_ACCEPTED)
 async def generate_minutes(
