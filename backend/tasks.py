@@ -392,7 +392,7 @@ def transcribe_audio_task(self, job_id: int, audio_file_path: str):
             db.close()
 
 @celery_app.task(bind=True)
-def generate_minutes_task(self, job_id: int, meeting_date: str, meeting_time: str, tone: str):
+def generate_minutes_task(self, job_id: int, meeting_date: str, meeting_time: str, tone: str, meeting_name: str):
     db = None
     job = None
     try:
@@ -423,12 +423,8 @@ def generate_minutes_task(self, job_id: int, meeting_date: str, meeting_time: st
         # Select prompt template based on tone
         if tone == "CEO":
             prompt_template = CEO_TONE_PROMPT_TEMPLATE
-            title_burmese = "Infrastructure လွှဲပြောင်းမှုနှင့် လုံခြုံရေးခေတ်မီအောင် ဆောင်ရွက်ခြင်းဆိုင်ရာ မဟာဗျူဟာအစည်းအဝေး"
-            title_english = "Infrastructure Handover & Security Modernization Strategic Meeting"
         elif tone == "SHORT_TO_THE_POINT":
             prompt_template = SHORT_TO_THE_POINT_PROMPT_TEMPLATE
-            title_burmese = "နည်းပညာအစည်းအဝေး အနှစ်ချုပ်"
-            title_english = "Technical Meeting Brief"
         else:
             logger.error(f"Invalid tone '{tone}' for minutes generation for job {job_id}.")
             job.status = TranscriptionJobStatus.FAILED
@@ -438,8 +434,8 @@ def generate_minutes_task(self, job_id: int, meeting_date: str, meeting_time: st
         
         # Construct the final prompt
         final_prompt = prompt_template.format(
-            title_burmese=title_burmese,
-            title_english=title_english,
+            title_burmese=meeting_name,
+            title_english=meeting_name,
             meeting_date=meeting_date,
             meeting_time=meeting_time,
             transcript=job.full_transcript

@@ -49,6 +49,20 @@ const Message = ({ msg }) => {
   );
 };
 
+const TypingIndicator = () => (
+    <div className="flex items-start gap-4">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+            <Bot size={20} className="text-white" />
+        </div>
+        <div className="prose prose-sm max-w-xl p-4 rounded-2xl shadow-md bg-white text-gray-800 rounded-bl-none">
+            <div className="flex items-center justify-center space-x-1">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse [animation-delay:-0.3s]"></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse [animation-delay:-0.15s]"></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+            </div>
+        </div>
+    </div>
+);
 
 function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from props
   const { user, token } = useAuth(); // Use the hook to get user and token
@@ -101,7 +115,7 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
       const response = await axios.get(`${API_BASE_URL}/api/chat/history/${sessionId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setMessages(response.data.map(msg => ({
+      setMessages(response.data.reverse().map(msg => ({
         text: msg.content,
         sender: msg.role === 'assistant' ? 'ai' : 'user',
       })));
@@ -114,22 +128,8 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
   }, [token]); // Add token to dependencies
 
   const handleNewChat = () => {
-    // Optimistic UI update
-    const tempId = `temp-${Date.now()}`;
-    const newChat = {
-      id: tempId,
-      created_at: new Date().toISOString(),
-      title: "New Chat...", // Placeholder title
-    };
-    setRecentChats(prev => [newChat, ...prev]);
-
-    // Clear current chat view
     setCurrentSessionId(null);
     setMessages([{ text: 'Hello! How can I assist you with your documents today?', sender: 'ai' }]);
-    
-    // The first message sent will create the chat on the backend.
-    // The optimistic new chat will be replaced once a message is sent
-    // and the sessions are re-fetched.
   };
 
   const handleDeleteChat = async (sessionId) => {
@@ -179,10 +179,7 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
 
     // If this is the first message of a new chat, the session ID will be null.
     // The backend will create a new session.
-    if (!sessionIdToUse) {
-      // Find our temporary chat and remove it, ready for the real one.
-      setRecentChats(prev => prev.filter(chat => !chat.id.toString().startsWith('temp-')));
-    }
+    // (Removed: filtering out temporary chat as it's no longer added in handleNewChat)
 
     try {
       // Use token from useAuth hook
@@ -275,10 +272,11 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
         {/* Main Chat Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-10">
           <div className="max-w-3xl mx-auto space-y-6">
-            {messages.map((msg, index) => (
-              <Message key={index} msg={msg} />
-            ))}
-            {isLoading && <Message msg={{ sender: 'ai', text: '...' }} />} 
+            {messages.map((msg, index) => {
+              console.log("Rendering message:", msg);
+              return <Message key={index} msg={msg} />
+            })}
+            {isLoading && <TypingIndicator />} 
             <div ref={chatEndRef} />
           </div>
         </div>

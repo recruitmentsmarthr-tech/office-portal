@@ -16,6 +16,12 @@ from pathlib import Path
 import uuid
 from celery import Celery # New import for Celery
 from tasks import transcribe_audio_task, generate_minutes_task # New: Import Celery tasks
+from docx import Document as DocxDocument # New import for docx generation
+from docx.shared import Pt # New import for setting font size
+from io import BytesIO # New import for handling binary file in memory
+from fastapi.responses import StreamingResponse # New import for streaming file responses
+
+from markdown_it import MarkdownIt
 
 
 # Import the RAG pipeline functions
@@ -159,6 +165,7 @@ class TranscriptionJobDisplay(BaseModel):
     id: int
     user_id: int
     original_filename: str
+    meeting_name: Optional[str] = None # Added field
     status: TranscriptionJobStatus
     progress_percent: int
     progress_text: str
@@ -171,6 +178,7 @@ class TranscriptionJobDisplay(BaseModel):
 class TranscriptionJobDetailDisplay(TranscriptionJobDisplay):
     full_transcript: Optional[str] = None
     meeting_minutes: Optional[str] = None
+    meeting_name: Optional[str] = None # Added field
     error_message: Optional[str] = None
 
     class Config:
@@ -180,6 +188,7 @@ class TranscriptUpdate(BaseModel):
     new_transcript: str
 
 class MinutesGenerationRequest(BaseModel):
+    meeting_name: str
     meeting_date: str
     meeting_time: str
     tone: str # e.g., "CEO", "SHORT_TO_THE_POINT"
@@ -400,6 +409,134 @@ def get_transcription_job_status(
 
     return job
 
+@app.get("/api/transcribe/jobs/{job_id}/download/docx", response_class=StreamingResponse)
+def download_minutes_docx(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = db.query(TranscriptionJob).filter(TranscriptionJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Transcription job not found")
+
+    if job.user_id != current_user.id and not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not authorized to download this job's minutes")
+
+    if not job.meeting_minutes or not job.meeting_minutes.strip():
+        raise HTTPException(status_code=404, detail="Meeting minutes are empty or not generated yet.")
+
+    markdown_text = job.meeting_minutes
+    document = DocxDocument()
+
+    # Set default font
+    style = document.styles['Normal']
+    font = style.font
+    font.name = 'Pyidaungsu'
+    font.size = Pt(13)
+
+    md = MarkdownIt("gfm-like")
+    tokens = md.parse(markdown_text)
+
+    p = None
+    table = None
+    row = None
+    cell = None
+    col_idx = 0
+    
+    # State for inline formatting
+    is_bold = False
+    is_italic = False
+
+    for i, token in enumerate(tokens):
+        if token.type == 'heading_open':
+            level = int(token.tag[1])
+            p = document.add_heading(level=level)
+        elif token.type == 'paragraph_open':
+            if table is None:
+                 p = document.add_paragraph()
+        elif token.type == 'bullet_list_open':
+            pass 
+        elif token.type == 'list_item_open':
+            # Use a specific style for list items if available, or indent
+            p = document.add_paragraph(style='List Bullet')
+        
+        elif token.type == 'inline' and token.content:
+            if p: # p should be set if we are in a paragraph, heading, or cell
+                for child in token.children:
+                    if child.type == 'strong_open':
+                        is_bold = True
+                    elif child.type == 'strong_close':
+                        is_bold = False
+                    elif child.type == 'em_open':
+                        is_italic = True
+                    elif child.type == 'em_close':
+                        is_italic = False
+                    elif child.type == 'text':
+                        run = p.add_run(child.content)
+                        run.bold = is_bold
+                        run.italic = is_italic
+                        if not p.style.name.startswith('Heading'):
+                            run.font.name = 'Pyidaungsu'
+                            run.font.size = Pt(13)
+
+        elif token.type == 'table_open':
+            # Find header to determine column count
+            num_cols = 0
+            for j in range(i + 1, len(tokens)):
+                if tokens[j].type == 'tr_open':
+                    for k in range(j + 1, len(tokens)):
+                        if tokens[k].type == 'tr_close':
+                            break
+                        if tokens[k].type == 'th_open':
+                            num_cols += 1
+                    break 
+            if num_cols > 0:
+                table = document.add_table(rows=0, cols=num_cols)
+                table.style = 'Table Grid'
+            p = None # Unset paragraph context
+        
+        elif token.type == 'tr_open':
+            if table is not None:
+                row = table.add_row()
+                col_idx = 0
+        
+        elif token.type == 'th_open':
+            if row is not None:
+                cell = row.cells[col_idx]
+                p = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+                # Clear any default text in the paragraph
+                p.text = ''
+
+        elif token.type == 'td_open':
+            if row is not None:
+                cell = row.cells[col_idx]
+                p = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+                p.text = ''
+
+        elif token.type == 'th_close' or token.type == 'td_close':
+            col_idx += 1
+            p = None
+
+        elif token.type == 'table_close':
+            table = None
+            row = None
+            cell = None
+            p = None
+
+    # Save document to a BytesIO object
+    file_stream = BytesIO()
+    document.save(file_stream)
+    file_stream.seek(0)
+
+    filename = f"minutes_{job.meeting_name or job.id}.docx".replace(" ", "_")
+    
+    return StreamingResponse(
+        file_stream,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 @app.get("/api/transcribe/jobs", response_model=List[TranscriptionJobDisplay])
 def list_transcription_jobs(
     current_user: User = Depends(get_current_user),
@@ -511,9 +648,13 @@ async def generate_minutes(
     if not job.full_transcript:
         raise HTTPException(status_code=400, detail="No full transcript available for this job to generate minutes.")
 
+    # Save the meeting name to the job
+    job.meeting_name = request.meeting_name
+    db.commit()
+
     # Trigger the Celery task for minutes generation
     from tasks import generate_minutes_task # Import the task
-    generate_minutes_task.delay(job.id, request.meeting_date, request.meeting_time, request.tone) # New: Pass additional parameters
+    generate_minutes_task.delay(job.id, request.meeting_date, request.meeting_time, request.tone, request.meeting_name) # New: Pass additional parameters
 
     return {"message": "Minutes generation started in the background.", "job_id": job.id}
 

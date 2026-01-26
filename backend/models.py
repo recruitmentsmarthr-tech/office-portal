@@ -68,6 +68,7 @@ class TranscriptionJob(Base):
     progress_text = Column(String, default="Starting...")
     full_transcript = Column(Text)
     meeting_minutes = Column(Text)
+    meeting_name = Column(String, nullable=True) # New field to store the meeting name
     error_message = Column(Text)
     celery_task_id = Column(String, nullable=True) # New field to store Celery task ID
     created_at = Column(DateTime(timezone=True), server_default=func.now())

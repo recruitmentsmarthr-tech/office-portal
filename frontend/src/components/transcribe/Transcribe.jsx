@@ -13,6 +13,7 @@ import {
     Trash,
     XCircle
 } from 'lucide-react';
+import axios from 'axios'; // Add axios import
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -39,6 +40,7 @@ function Transcribe() {
 
     const [showMinutesModal, setShowMinutesModal] = useState(false);
     const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+    const [meetingName, setMeetingName] = useState('');
     const [meetingDate, setMeetingDate] = useState(new Date().toISOString().split('T')[0]);
     const [meetingTime, setMeetingTime] = useState('');
     const [selectedTone, setSelectedTone] = useState('CEO');
@@ -59,6 +61,7 @@ function Transcribe() {
             const data = await response.json();
             setCurrentJobDetails(data);
             setEditedTranscript(data.full_transcript || '');
+            setMeetingName(data.meeting_name || ''); // Set meeting name from fetched data
             setJobs(prevJobs => prevJobs.map(job => (job.id === jobId ? data : job)));
         } catch (err) {
             setError(err.message);
@@ -199,6 +202,7 @@ function Transcribe() {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
+                    meeting_name: meetingName,
                     meeting_date: meetingDate,
                     meeting_time: meetingTime,
                     tone: selectedTone
@@ -259,6 +263,44 @@ function Transcribe() {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    };
+
+    const handleDownloadMinutesDocx = async (jobId, filename) => {
+        if (!token || !jobId) {
+            setError("Authentication token or Job ID missing for download.");
+            return;
+        }
+        try {
+            const response = await axios.get(
+                `${API_BASE_URL}/api/transcribe/jobs/${jobId}/download/docx`,
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                    responseType: 'blob', // Important for downloading files
+                }
+            );
+
+            // Extract filename from Content-Disposition header if available, otherwise use default
+            const contentDisposition = response.headers['content-disposition'];
+            let actualFilename = filename;
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+                if (filenameMatch && filenameMatch[1]) {
+                    actualFilename = filenameMatch[1];
+                }
+            }
+
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', actualFilename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Error downloading DOCX minutes:", err);
+            setError("Failed to download meeting minutes as DOCX.");
+        }
     };
     
     const handleReplaceSpeakers = () => {
@@ -452,7 +494,7 @@ function Transcribe() {
                                     onClick={() => setActiveJobId(job.id)}
                                 >
                                     <div className="flex-1 min-w-0">
-                                        <p className="font-medium text-gray-800 truncate">{job.original_filename}</p>
+                                        <p className="font-medium text-gray-800 truncate">{job.meeting_name || job.original_filename}</p>
                                         <p className={`text-sm ${job.status === 'COMPLETED' ? 'text-green-600' : job.status === 'FAILED' ? 'text-red-600' : job.status === 'CANCELLED' ? 'text-orange-500' : 'text-blue-500'}`}>
                                             Status: {job.status} {job.status === 'PROCESSING' && `(${job.progress_percent}%)`}
                                         </p>
@@ -587,10 +629,10 @@ function Transcribe() {
                     </button>
                     {currentJobDetails?.meeting_minutes && (
                         <button
-                            onClick={() => downloadText(currentJobDetails.meeting_minutes, `minutes_${currentJobDetails.id}.txt`)}
+                            onClick={() => handleDownloadMinutesDocx(currentJobDetails.id, `minutes_${currentJobDetails.id}.docx`)}
                             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 flex items-center justify-center transition-colors duration-200"
                         >
-                            <Download size={18} className="mr-2" /> Download Minutes
+                            <Download size={18} className="mr-2" /> Download .docx
                         </button>
                     )}
                 </div>
@@ -620,12 +662,23 @@ function Transcribe() {
             <Modal isOpen={showMinutesModal} onClose={handleCloseMinutesModal} title="Generate Meeting Minutes">
                 <div className="space-y-4">
                     <div>
+                        <label htmlFor="meetingName" className="block text-sm font-medium text-gray-700">Meeting Name</label>
+                        <input
+                            type="text"
+                            id="meetingName"
+                            value={meetingName}
+                            onChange={(e) => setMeetingName(e.target.value)}
+                            placeholder="e.g., Q4 Tech Strategy"
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        />
+                    </div>
+                    <div>
                         <label htmlFor="meetingDate" className="block text-sm font-medium text-gray-700">Meeting Date</label>
                         <input
                             type="date"
                             id="meetingDate"
                             value={meetingDate}
-                            onChange={(e) => setMeetingDate(e.target.value)}
+                            onChange={(e) => setMeetingDate(e.g.target.value)}
                             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                         />
                     </div>
