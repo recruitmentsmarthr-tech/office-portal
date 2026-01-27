@@ -12,6 +12,7 @@ function Layout({ children }) { // user and onLogout are no longer props
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Chat With AI', href: '/chat', icon: MessageCircle },
+    ...(user && user.role === 'admin' ? [{ name: 'Meeting Chat', href: '/meeting-chat', icon: MessageCircle }] : []), // New item for admin
     { name: 'Transcribe', href: '/transcribe', icon: FileText }, // New item
     ...(user && user.role === 'admin' ? [{ name: 'Vectors', href: '/vectors', icon: Database }] : []),
     ...(user?.role === 'admin' ? [{ name: 'Admin', href: '/admin', icon: Shield }] : []),

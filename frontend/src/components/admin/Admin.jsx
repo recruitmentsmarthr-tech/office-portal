@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
-import { Shield, Plus, Edit, Trash2, Search } from 'lucide-react';
+import { Shield, Plus, Edit, Trash2, Search, FileText } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // New import
 import Modal from '../common/Modal';
 import ConfirmationDialog from '../common/ConfirmationDialog';
 import UserForm from './UserForm';
@@ -44,6 +45,7 @@ function Admin() {
   const [success, setSuccess] = useState('');
 
   const { token } = useAuth(); // Use the hook to get token
+  const navigate = useNavigate(); // Declare useNavigate hook
 
   const clearMessages = () => { setError(''); setSuccess(''); };
 
@@ -240,6 +242,7 @@ function Admin() {
       <div className="flex space-x-4 mb-8">
         <StyledButton onClick={handleOpenCreateUserModal}><Plus className="mr-2" /> Create New User</StyledButton>
         <StyledButton onClick={() => setRoleModalOpen(true)} variant="secondary"><Shield className="mr-2" /> Manage Roles</StyledButton>
+        <StyledButton onClick={() => navigate('/admin/ingested-meetings')} variant="secondary"><FileText className="mr-2" /> Manage Meeting Documents</StyledButton>
       </div>
       
       {error && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-lg shadow-md" role="alert">{error}</div>}

@@ -2,7 +2,7 @@ import os
 import re
 import requests
 import unicodedata
-from typing import List
+from typing import List, Optional # Added Optional
 
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
@@ -95,7 +95,7 @@ def extract_text_from_pdf(file_path: str) -> str:
             text += page_text + "\n"
     return text
 
-def ingest_document_pipeline(document_id: int, file_path: str, db: Session):
+def ingest_document_pipeline(document_id: int, file_path: str, db: Session, collection: Optional[str] = None):
     """
     Orchestrates the document ingestion process:
     Parses, normalizes, chunks, embeds, and stores in the database.
@@ -105,10 +105,20 @@ def ingest_document_pipeline(document_id: int, file_path: str, db: Session):
         document = db.query(Document).filter(Document.id == document_id).first()
         if not document:
             raise ValueError(f"Document with ID {document_id} not found.")
+        
+        # Set the collection for the document if provided
+        if collection:
+            document.collection = collection
+            
         document.status = DocumentStatus.INDEXING
         db.commit()
 
-        raw_text = extract_text_from_pdf(file_path)
+        raw_text = ""
+        if document.document_type in ['full_transcript', 'meeting_minutes']:
+            with open(file_path, "r", encoding="utf-8") as f:
+                raw_text = f.read()
+        else: # Assume it's a PDF for now for other document types
+            raw_text = extract_text_from_pdf(file_path)
         
         # APPLY CLEANING
         cleaned_text = clean_text(raw_text)

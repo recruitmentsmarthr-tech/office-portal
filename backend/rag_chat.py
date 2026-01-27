@@ -4,21 +4,26 @@ import requests
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
-from models import Chat, ChatMessage, DocumentChunk
+from models import Chat, ChatMessage, DocumentChunk, Document # Import Document
 
 def get_or_create_chat(
-    user_id: int, db: Session, session_id: Optional[int] = None
+    user_id: int, db: Session, session_id: Optional[int] = None, collection: str = "corporate"
 ) -> Chat:
-    """Gets a specific chat for a user, or creates a new one if session_id is None or not found."""
+    """Gets a specific chat for a user and collection, or creates a new one."""
     if session_id:
         chat = (
             db.query(Chat)
-            .filter(Chat.id == session_id, Chat.user_id == user_id)
+            .filter(
+                Chat.id == session_id,
+                Chat.user_id == user_id,
+                Chat.collection == collection # Filter by collection
+            )
             .first()
         )
         if chat:
             return chat
-    new_chat = Chat(user_id=user_id)
+    # If no session_id or session not found for this collection, create a new one.
+    new_chat = Chat(user_id=user_id, collection=collection)
     db.add(new_chat)
     db.commit()
     db.refresh(new_chat)
@@ -78,15 +83,19 @@ def generate_embedding(text: str) -> List[float]:
         raise
 
 def perform_vector_search(
-    query_embedding: List[float], db: Session, top_k: int = 5
+    query_embedding: List[float], db: Session, top_k: int = 5, collection: Optional[str] = None
 ) -> List[DocumentChunk]:
-    """Performs a vector similarity search using L2 distance."""
+    """Performs a vector similarity search using L2 distance, optionally filtering by collection."""
     if not query_embedding:
         return []
     
+    query = db.query(DocumentChunk)
+    
+    if collection:
+        query = query.join(DocumentChunk.document).filter(Document.collection == collection)
+
     results = (
-        db.query(DocumentChunk)
-        .order_by(DocumentChunk.embedding.l2_distance(query_embedding))
+        query.order_by(DocumentChunk.embedding.l2_distance(query_embedding))
         .limit(top_k)
         .all()
     )

@@ -10,10 +10,10 @@ import { useAuth } from '../../context/AuthContext'; // New import
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
 const suggestions = [
-  "Summarize the Q4 financial report",
-  "What is the company's vacation policy?",
-  "List all active marketing campaigns",
-  "Who is the point of contact for HR issues?",
+  "Summarize the key decisions from the last meeting",
+  "What were the action items assigned to John?",
+  "Tell me about the discussion regarding budget adjustments",
+  "Who attended the project review meeting?",
 ];
 
 // --- Sub-components for a cleaner structure ---
@@ -39,7 +39,7 @@ const Message = ({ msg }) => {
       <div
         className={`prose prose-sm max-w-xl p-4 rounded-2xl shadow-md ${ 
           isUser
-            ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-br-none'
+            ? 'bg-gradient-to-br from-blue-600 to-blue-700 rounded-br-none text-white'
             : 'bg-white text-gray-800 rounded-bl-none'
         }`}
       >
@@ -64,7 +64,7 @@ const TypingIndicator = () => (
     </div>
 );
 
-function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from props
+function MeetingChat({ currentSessionId, setCurrentSessionId }) { // Removed user from props
   const { user, token } = useAuth(); // Use the hook to get user and token
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -86,7 +86,7 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
     setSessionsError('');
     try {
       // Use token from useAuth hook
-      const response = await axios.get(`${API_BASE_URL}/api/chat/sessions?collection=corporate`, {
+      const response = await axios.get(`${API_BASE_URL}/api/chat/sessions?collection=meetings`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setRecentChats(response.data);
@@ -105,7 +105,7 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
 
   const fetchChatHistory = useCallback(async (sessionId) => {
     if (!sessionId) {
-        setMessages([{ text: 'Hello! How can I assist you with your documents today?', sender: 'ai' }]);
+        setMessages([{ text: 'Hello! How can I assist you with your meeting transcripts and minutes today?', sender: 'ai' }]);
         return;
     }
     setIsLoading(true);
@@ -129,7 +129,7 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
 
   const handleNewChat = () => {
     setCurrentSessionId(null);
-    setMessages([{ text: 'Hello! How can I assist you with your documents today?', sender: 'ai' }]);
+    setMessages([{ text: 'Hello! How can I assist you with your meeting transcripts and minutes today?', sender: 'ai' }]);
   };
 
   const handleDeleteChat = async (sessionId) => {
@@ -144,7 +144,7 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
         // If the deleted chat was the active one, start a new chat
         if (currentSessionId === sessionId) {
             setCurrentSessionId(null);
-            setMessages([{ text: 'Hello! How can I assist you with your documents today?', sender: 'ai' }]);
+            setMessages([{ text: 'Hello! How can I assist you with your meeting transcripts and minutes today?', sender: 'ai' }]);
         }
     } catch (err) {
         console.error('Failed to delete chat session:', err);
@@ -159,11 +159,23 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
       fetchChatHistory(currentSessionId);
     } else {
       // Otherwise, start a new chat
-      setMessages([{ text: 'Hello! How can I assist you with your documents today?', sender: 'ai' }]);
+      setMessages([{ text: 'Hello! How can I assist you with your meeting transcripts and minutes today?', sender: 'ai' }]);
     }
   }, [currentSessionId, fetchChatHistory]);
 
   useEffect(scrollToBottom, [messages]);
+  
+  // Access check after all hooks
+  if (user && user.role !== 'admin') {
+    return (
+        <div className="flex items-center justify-center h-full">
+            <div className="text-center p-8 bg-white rounded-lg shadow-md">
+                <h2 className="text-2xl font-bold text-red-600 mb-2">Access Denied</h2>
+                <p className="text-gray-600">You do not have the necessary permissions to view this page.</p>
+            </div>
+        </div>
+    );
+  }
 
   const sendMessage = async (messageText) => {
     const text = messageText || input;
@@ -177,17 +189,13 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
 
     let sessionIdToUse = currentSessionId;
 
-    // If this is the first message of a new chat, the session ID will be null.
-    // The backend will create a new session.
-    // (Removed: filtering out temporary chat as it's no longer added in handleNewChat)
-
     try {
       // Use token from useAuth hook
       const payload = {
         message: text,
         session_id: sessionIdToUse, 
       };
-      const response = await axios.post(`${API_BASE_URL}/chat`, payload, {
+      const response = await axios.post(`${API_BASE_URL}/api/chat/meetings`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -246,7 +254,7 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
               <div key={session.id} className="group flex items-center">
                   <button
                     onClick={() => setCurrentSessionId(session.id)}
-                    className={`w-full text-left p-2 rounded-md transition-colors text-sm ${
+                    className={`w-full text-left p-2 rounded-md transition-colors text-sm ${ 
                         currentSessionId === session.id
                         ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-600 hover:bg-gray-100'
@@ -294,7 +302,7 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Ask about your documents..."
+                placeholder="Ask about your meeting transcripts and minutes..."
                 rows="1"
                 className="flex-grow bg-transparent border-none focus:ring-0 resize-none px-4 py-2 text-gray-800 placeholder-gray-500"
                 disabled={isLoading}
@@ -315,4 +323,4 @@ function Chat({ currentSessionId, setCurrentSessionId }) { // Removed user from 
   );
 }
 
-export default Chat;
+export default MeetingChat;
