@@ -1,15 +1,17 @@
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, BackgroundTasks, Query, Form
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from models import Base, User, Role, Permission, Document, DocumentStatus, Chat, ChatMessage, MessageFeedback, TranscriptionJob, TranscriptionJobStatus # Added TranscriptionJob, TranscriptionJobStatus
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
+import re
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from typing import List, Optional, Union # Added Union for typing
+from math import ceil
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from pathlib import Path
@@ -123,9 +125,20 @@ class DocumentDisplay(BaseModel):
     filename: str
     upload_date: datetime
     status: DocumentStatus
+    document_type: Optional[str] # Add this field
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+class PaginatedDocumentResponse(BaseModel):
+    total: int
+    page: int
+    per_page: int
+    pages: int
+    items: List[DocumentDisplay]
+
+    class Config:
+        from_attributes = True
 
 class ChatSessionDisplay(BaseModel):
     id: int
@@ -133,7 +146,7 @@ class ChatSessionDisplay(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ChatMessageDisplay(BaseModel):
     id: int
@@ -143,7 +156,7 @@ class ChatMessageDisplay(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserDisplay(BaseModel):
     id: int
@@ -152,14 +165,18 @@ class UserDisplay(BaseModel):
     role_id: int
 
     class Config:
-        orm_mode = True # To allow ORM models to be directly returned
+        from_attributes = True # To allow ORM models to be directly returned
 
 class RoleDisplay(BaseModel):
     id: int
     name: str
 
     class Config:
-        orm_mode = True # To allow ORM models to be directly returned
+        from_attributes = True # To allow ORM models to be directly returned
+
+class TranscriptionIngestionStatus(BaseModel):
+    full_transcript: Optional[DocumentStatus] = None
+    meeting_minutes: Optional[DocumentStatus] = None
 
 class TranscriptionJobDisplay(BaseModel):
     id: int
@@ -173,7 +190,7 @@ class TranscriptionJobDisplay(BaseModel):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TranscriptionJobDetailDisplay(TranscriptionJobDisplay):
     full_transcript: Optional[str] = None
@@ -182,7 +199,7 @@ class TranscriptionJobDetailDisplay(TranscriptionJobDisplay):
     error_message: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TranscriptUpdate(BaseModel):
     new_transcript: str
@@ -192,6 +209,9 @@ class MinutesGenerationRequest(BaseModel):
     meeting_date: str
     meeting_time: str
     tone: str # e.g., "CEO", "SHORT_TO_THE_POINT"
+
+class TranscriptionIngestRequest(BaseModel):
+    document_type: str # e.g., 'full_transcript', 'meeting_minutes'
 
 # Helper functions
 def get_db():
@@ -292,7 +312,12 @@ async def ingest_document(
         raise HTTPException(status_code=403, detail="Not enough permissions to ingest documents")
 
     # Create a document entry
-    new_document = Document(filename=file.filename, status=DocumentStatus.PENDING)
+    new_document = Document(
+        filename=file.filename,
+        status=DocumentStatus.PENDING,
+        collection="corporate", # Explicitly set to 'corporate' collection
+        document_type="general_document"
+    )
     db.add(new_document)
     db.commit()
     db.refresh(new_document)
@@ -313,7 +338,7 @@ async def ingest_document(
 
     # Add ingestion to background tasks
     # Pass SessionLocal directly, as it will create a new session for the background task
-    background_tasks.add_task(ingest_document_pipeline, new_document.id, str(temp_file_path), SessionLocal())
+    background_tasks.add_task(ingest_document_pipeline, new_document.id, str(temp_file_path), SessionLocal(), collection="corporate")
 
     return IngestResponse(
         message="Document received and processing started in background.",
@@ -323,6 +348,7 @@ async def ingest_document(
 
 @app.post("/api/transcribe", response_model=TranscriptionJobDisplay)
 async def start_transcription(
+    meeting_name: str = Form(...),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -358,6 +384,7 @@ async def start_transcription(
     new_job = TranscriptionJob(
         user_id=current_user.id,
         original_filename=file.filename,
+        meeting_name=meeting_name, # Save the meeting name
         status=TranscriptionJobStatus.PENDING,
         progress_text="File uploaded, awaiting processing.",
     )
@@ -628,10 +655,10 @@ def update_transcript(
 
     return job
 
-@app.post("/api/generate-minutes/{job_id}", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/api/transcriptions/{job_id}/generate-minutes", status_code=status.HTTP_202_ACCEPTED)
 async def generate_minutes(
     job_id: int,
-    request: MinutesGenerationRequest, # New: Accepts MinutesGenerationRequest body
+    request: MinutesGenerationRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -639,7 +666,7 @@ async def generate_minutes(
     if not job:
         raise HTTPException(status_code=404, detail="Transcription job not found")
 
-    if job.user_id != current_user.id and not check_permission(current_user, "admin", db):
+    if not check_permission(current_user, "admin", db): # Only admin can generate minutes
         raise HTTPException(status_code=403, detail="Not authorized to generate minutes for this job")
     
     if job.status not in [TranscriptionJobStatus.COMPLETED, TranscriptionJobStatus.FAILED]:
@@ -658,12 +685,150 @@ async def generate_minutes(
 
     return {"message": "Minutes generation started in the background.", "job_id": job.id}
 
-@app.get("/api/documents", response_model=List[DocumentDisplay])
-def list_documents(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def sanitize_filename(name: str) -> str:
+    """
+    Sanitizes a string to be a valid filename.
+    Replaces spaces with underscores and removes characters that are not
+    alphanumeric, underscores, or hyphens.
+    """
+    import re
+    # Replace spaces with underscores
+    name = name.replace(" ", "_")
+    # Remove invalid characters
+    name = re.sub(r'[^\w\-.]', '', name)
+    return name
+
+
+@app.post("/api/transcriptions/{job_id}/ingest", response_model=IngestResponse)
+async def ingest_transcription_document(
+    job_id: int,
+    request: TranscriptionIngestRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not authorized to ingest transcription documents")
+
+    job = db.query(TranscriptionJob).filter(TranscriptionJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Transcription job not found")
+
+    content_to_ingest = None
+    
+    # Sanitize the meeting name to be used in the filename
+    sanitized_meeting_name = sanitize_filename(job.meeting_name)
+
+    if request.document_type == 'full_transcript':
+        content_to_ingest = job.full_transcript
+        filename = f"{sanitized_meeting_name}_transcript.txt"
+    elif request.document_type == 'meeting_minutes':
+        content_to_ingest = job.meeting_minutes
+        filename = f"{sanitized_meeting_name}_minutes.txt"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid document_type. Must be 'full_transcript' or 'meeting_minutes'.")
+
+    if not content_to_ingest or not content_to_ingest.strip():
+        raise HTTPException(status_code=400, detail=f"No {request.document_type} available for job {job_id} to ingest.")
+
+    # Create a temporary file to hold the content for ingestion pipeline
+    unique_filename = f"{job_id}_{uuid.uuid4()}_{filename}"
+    temp_file_path = Path("/tmp") / unique_filename
+    temp_file_path.parent.mkdir(parents=True, exist_ok=True) # Ensure /tmp exists within the container
+
+    try:
+        with open(temp_file_path, "w", encoding="utf-8") as buffer:
+            buffer.write(content_to_ingest)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create temporary file for ingestion: {e}")
+
+    # Create a document entry
+    new_document = Document(
+        filename=filename,
+        status=DocumentStatus.PENDING,
+        collection="meetings", # Explicitly set to 'meetings' collection
+        source_transcription_id=job_id,
+        document_type=request.document_type
+    )
+    db.add(new_document)
+    db.commit()
+    db.refresh(new_document)
+
+    # Add ingestion to background tasks
+    background_tasks.add_task(ingest_document_pipeline, new_document.id, str(temp_file_path), SessionLocal(), collection="meetings")
+
+    return IngestResponse(
+        message=f"{request.document_type.replace('_', ' ').capitalize()} received and processing started in background.",
+        document_id=new_document.id,
+        filename=filename,
+    )
+
+@app.get("/api/transcriptions/{job_id}/ingestion-status", response_model=TranscriptionIngestionStatus)
+def get_transcription_ingestion_status(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not authorized to view transcription ingestion status")
+
+    status_response = TranscriptionIngestionStatus()
+    
+    # Query for documents linked to this transcription job and the 'meetings' collection
+    ingested_docs = db.query(Document).filter(
+        Document.source_transcription_id == job_id,
+        Document.collection == "meetings"
+    ).all()
+
+    for doc in ingested_docs:
+        if doc.document_type == 'full_transcript':
+            status_response.full_transcript = doc.status
+        elif doc.document_type == 'meeting_minutes':
+            status_response.meeting_minutes = doc.status
+            
+    return status_response
+
+
+@app.get("/api/documents", response_model=PaginatedDocumentResponse)
+def list_documents(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    document_type: List[str] = Query(None),
+    q: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    page: int = 1,
+    per_page: int = 10,
+):
     if not check_permission(current_user, "read_documents", db):
         raise HTTPException(status_code=403, detail="Not enough permissions to read documents")
-    documents = db.query(Document).order_by(Document.upload_date.desc()).all()
-    return documents
+
+    query = db.query(Document)
+
+    # Filtering
+    if document_type and len(document_type) > 0:
+        query = query.filter(Document.document_type.in_(document_type))
+    if q:
+        query = query.filter(Document.filename.ilike(f"%{q}%"))
+    if start_date:
+        query = query.filter(Document.upload_date >= start_date)
+    if end_date:
+        # Add 1 day to end_date to make it inclusive of the whole day
+        query = query.filter(Document.upload_date < end_date + timedelta(days=1))
+
+    # Get total count before pagination
+    total = query.count()
+
+    # Pagination
+    documents = query.order_by(Document.upload_date.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    
+    return PaginatedDocumentResponse(
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=ceil(total / per_page) if total > 0 else 0,
+        items=documents,
+    )
 
 @app.delete("/api/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(document_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -674,6 +839,10 @@ def delete_document(document_id: int, current_user: User = Depends(get_current_u
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     
+    # If the document was linked to a transcription job, log this.
+    if document.source_transcription_id and document.document_type:
+        logging.info(f"Deleting RAG document (ID: {document.id}, Type: {document.document_type}) from collection '{document.collection}' linked to Transcription Job ID: {document.source_transcription_id}")
+
     db.delete(document)
     db.commit()
     return
@@ -824,7 +993,7 @@ def chat(
     db: Session = Depends(get_db),
 ):
     # 1. Get or create chat session
-    chat_session = get_or_create_chat(current_user.id, db, session_id=chat_request.session_id)
+    chat_session = get_or_create_chat(current_user.id, db, session_id=chat_request.session_id, collection="corporate")
 
     # 2. Save user message
     save_message(chat_session.id, "user", chat_request.message, db)
@@ -834,7 +1003,7 @@ def chat(
     query_embedding = generate_embedding(normalized_query)
 
     # 4. Perform vector search for context
-    retrieved_chunks = perform_vector_search(query_embedding, db)
+    retrieved_chunks = perform_vector_search(query_embedding, db, collection="corporate")
 
     # 5. Get chat history (for context in LLM)
     history = get_chat_history(chat_session.id, db, limit=5) # Last 5 messages
@@ -850,17 +1019,61 @@ def chat(
 
     return {"session_id": chat_session.id, "response": llm_response}
 
+@app.post("/api/chat/meetings")
+async def chat_meetings(
+    chat_request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not check_permission(current_user, "admin", db):
+        raise HTTPException(status_code=403, detail="Not authorized to use the meeting chat")
+
+    # 1. Get or create chat session (reusing existing chat session logic)
+    # The Chat model does not currently have a 'collection' field, so chat sessions are global.
+    chat_session = get_or_create_chat(current_user.id, db, session_id=chat_request.session_id, collection="meetings")
+
+    # 2. Save user message
+    save_message(chat_session.id, "user", chat_request.message, db)
+
+    # 3. Normalize and embed user query
+    normalized_query = normalize_text(chat_request.message)
+    query_embedding = generate_embedding(normalized_query)
+
+    # 4. Perform vector search for context, specifically targeting the 'meetings' collection
+    retrieved_chunks = perform_vector_search(query_embedding, db, collection="meetings")
+
+    # 5. Get chat history (for context in LLM)
+    history = get_chat_history(chat_session.id, db, limit=5) # Last 5 messages
+
+    # 6. Construct LLM prompt
+    llm_prompt = construct_llm_prompt(chat_request.message, retrieved_chunks, history)
+
+    # 7. Get LLM response
+    llm_response = get_llm_response(llm_prompt)
+
+    # 8. Save AI response
+    save_message(chat_session.id, "assistant", llm_response, db)
+
+    return {"session_id": chat_session.id, "response": llm_response}
+
+
 @app.get("/api/chat/sessions", response_model=List[ChatSessionDisplay])
-def get_chat_sessions(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_chat_sessions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    collection: str = "corporate" # Default to 'corporate'
+):
     """
-    Returns all non-deleted chat sessions for the current user.
+    Returns all non-deleted chat sessions for the current user,
+    filtered by collection.
     """
-    sessions = (
-        db.query(Chat)
-        .filter(Chat.user_id == current_user.id, Chat.is_deleted == False)
-        .order_by(Chat.created_at.desc())
-        .all()
+    query = db.query(Chat).filter(
+        Chat.user_id == current_user.id,
+        Chat.is_deleted == False,
+        Chat.collection == collection
     )
+
+    sessions = query.order_by(Chat.created_at.desc()).all()
     return sessions
 
 @app.get("/api/chat/history/{session_id}", response_model=List[ChatMessageDisplay])

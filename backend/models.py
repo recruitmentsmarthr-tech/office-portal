@@ -31,6 +31,9 @@ class Document(Base):
     filename = Column(String, nullable=False)
     upload_date = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(SAEnum(DocumentStatus), nullable=False, default=DocumentStatus.PENDING)
+    collection = Column(String, nullable=False, default="corporate") # 'corporate' or 'meetings'
+    source_transcription_id = Column(Integer, ForeignKey('transcription_jobs.id', ondelete="CASCADE"), nullable=True)
+    document_type = Column(String, nullable=True) # e.g., 'full_transcript', 'meeting_minutes', 'general_document'
     chunks = relationship(
         "DocumentChunk", back_populates="document", cascade="all, delete-orphan"
     )
@@ -68,7 +71,7 @@ class TranscriptionJob(Base):
     progress_text = Column(String, default="Starting...")
     full_transcript = Column(Text)
     meeting_minutes = Column(Text)
-    meeting_name = Column(String, nullable=True) # New field to store the meeting name
+    meeting_name = Column(String, nullable=False) # New field to store the meeting name
     error_message = Column(Text)
     celery_task_id = Column(String, nullable=True) # New field to store Celery task ID
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -81,6 +84,7 @@ class Chat(Base):
     __tablename__ = "chats"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    collection = Column(String, nullable=False, default="corporate") # 'corporate' or 'meetings'
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False, nullable=False, server_default="false")
     messages = relationship(

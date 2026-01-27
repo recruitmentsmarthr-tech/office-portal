@@ -37,6 +37,9 @@ function Transcribe() {
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [jobToDeleteId, setJobToDeleteId] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [newMeetingName, setNewMeetingName] = useState(''); // State for the new meeting name
+    const [ingestionStatus, setIngestionStatus] = useState({ full_transcript: null, meeting_minutes: null });
+    const [loadingIngestionStatus, setLoadingIngestionStatus] = useState(false);
 
     const [showMinutesModal, setShowMinutesModal] = useState(false);
     const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
@@ -63,11 +66,33 @@ function Transcribe() {
             setEditedTranscript(data.full_transcript || '');
             setMeetingName(data.meeting_name || ''); // Set meeting name from fetched data
             setJobs(prevJobs => prevJobs.map(job => (job.id === jobId ? data : job)));
+
+            // Fetch ingestion status for admin users
+            if (user && user.role === 'admin') {
+                setLoadingIngestionStatus(true);
+                try {
+                    const ingestionResponse = await axios.get(`${API_BASE_URL}/api/transcriptions/${jobId}/ingestion-status`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    setIngestionStatus(ingestionResponse.data);
+                } catch (ingestionErr) {
+                    console.error("Error fetching ingestion status (this is expected during initiation):", ingestionErr);
+                    // Do not reset status on poll failure. A failed poll can be a transient issue,
+                    // especially when ingestion is just starting. Let the optimistic 'PROCESSING' state persist
+                    // until the next successful poll.
+                } finally {
+                    setLoadingIngestionStatus(false);
+                }
+            } else {
+                setIngestionStatus({ full_transcript: null, meeting_minutes: null }); // Clear if not admin
+            }
         } catch (err) {
             setError(err.message);
             console.error(`Error fetching details for job ${jobId}:`, err);
         }
-    }, [token, API_BASE_URL]);
+    }, [token, API_BASE_URL, user]);
 
     const fetchJobs = useCallback(async () => {
         if (!token) return;
@@ -142,6 +167,10 @@ function Transcribe() {
             setError("Please select an audio file to transcribe.");
             return;
         }
+        if (!newMeetingName) {
+            setError("Please enter a name for the meeting.");
+            return;
+        }
         if (!token) {
             setError("You must be logged in to start a transcription.");
             return;
@@ -151,6 +180,7 @@ function Transcribe() {
         setError(null);
         const formData = new FormData();
         formData.append('file', selectedFile);
+        formData.append('meeting_name', newMeetingName);
 
         try {
             const response = await fetch(`${API_BASE_URL}/api/transcribe`, {
@@ -174,6 +204,7 @@ function Transcribe() {
             setActiveJobId(newJob.id);
             setCurrentJobDetails(newJob);
             setSelectedFile(null);
+            setNewMeetingName(''); // Clear the input after successful start
 
         } catch (err) {
             setError(err.message);
@@ -195,25 +226,23 @@ function Transcribe() {
         setShowMinutesModal(false);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/generate-minutes/${currentJobDetails.id}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
+            const response = await axios.post(
+                `${API_BASE_URL}/api/transcriptions/${currentJobDetails.id}/generate-minutes`,
+                {
                     meeting_name: meetingName,
                     meeting_date: meetingDate,
                     meeting_time: meetingTime,
                     tone: selectedTone
-                })
-            });
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
 
-            if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.detail || `Failed to generate minutes: ${response.statusText}`);
-            }
-
+            // No need for !response.ok check as axios throws for non-2xx status codes
             setCurrentJobDetails(prevDetails => ({
                 ...prevDetails,
                 status: 'PROCESSING',
@@ -221,10 +250,48 @@ function Transcribe() {
             }));
 
         } catch (err) {
-            setError(err.message);
+            setError(err.response?.data?.detail || err.message);
             console.error("Error generating minutes:", err);
         } finally {
             setIsGeneratingMinutes(false);
+        }
+    };
+
+    const handleIngestDocument = async (documentType) => {
+        if (!currentJobDetails || !token) return;
+        if (!user || user.role !== 'admin') {
+            setError("Not authorized to ingest documents.");
+            return;
+        }
+        setError(null);
+
+        // Optimistically set to PROCESSING. This will immediately disable the button.
+        setIngestionStatus(prev => ({
+            ...prev,
+            [documentType]: 'PROCESSING'
+        }));
+
+        try {
+            await axios.post(
+                `${API_BASE_URL}/api/transcriptions/${currentJobDetails.id}/ingest`,
+                { document_type: documentType },
+                { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }}
+            );
+
+            // After successfully starting, schedule a poll to check the status.
+            // This avoids the main polling loop dependency and ensures we get an update.
+            setTimeout(() => {
+                fetchJobDetails(currentJobDetails.id);
+            }, 2000); // 2 second delay to give backend time to update its status
+
+        } catch (err) {
+            setError(err.response?.data?.detail || err.message);
+            console.error(`Error ingesting ${documentType}:`, err);
+            // If the initial POST fails, revert the optimistic status.
+            setIngestionStatus(prev => ({
+                ...prev,
+                [documentType]: null
+            }));
         }
     };
 
@@ -450,12 +517,23 @@ function Transcribe() {
                         className="hidden"
                         disabled={isUploadDisabled}
                     />
+                    <input
+                        type="text"
+                        placeholder="Enter Meeting Name..."
+                        value={newMeetingName}
+                        onChange={(e) => setNewMeetingName(e.target.value)}
+                        className={`
+                            p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500
+                            ${isUploadDisabled ? 'bg-gray-200 cursor-not-allowed' : ''}
+                        `}
+                        disabled={isUploadDisabled}
+                    />
                     <button
                         onClick={handleStartTranscription}
-                        disabled={!selectedFile || isUploadDisabled}
+                        disabled={!selectedFile || !newMeetingName || isUploadDisabled}
                         className={`
                             px-4 py-2 rounded-md font-semibold flex items-center transition-colors duration-200
-                            ${(!selectedFile || isUploadDisabled) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}
+                            ${(!selectedFile || !newMeetingName || isUploadDisabled) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}
                         `}
                     >
                         {isTranscribing ? <Loader size={18} className="animate-spin mr-2" /> : <Play size={18} className="mr-2" />}
@@ -616,24 +694,73 @@ function Transcribe() {
                     )}
                 </div>
                 <div className="mt-4 flex justify-end space-x-4 shrink-0">
-                    <button
-                        onClick={handleOpenGenerateMinutesModal}
-                        disabled={!canGenerateMinutes || isGeneratingMinutes}
-                        className={`
-                            px-4 py-2 rounded-md font-semibold flex items-center transition-colors duration-200
-                            ${(!canGenerateMinutes || isGeneratingMinutes) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}
-                        `}
-                    >
-                        {isGeneratingMinutes ? <Loader size={18} className="animate-spin mr-2" /> : <ArrowRight size={18} className="mr-2" />}
-                        {currentJobDetails?.meeting_minutes ? 'Regenerate Minutes' : 'Generate Minutes'}
-                    </button>
-                    {currentJobDetails?.meeting_minutes && (
-                        <button
-                            onClick={() => handleDownloadMinutesDocx(currentJobDetails.id, `minutes_${currentJobDetails.id}.docx`)}
-                            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 flex items-center justify-center transition-colors duration-200"
-                        >
-                            <Download size={18} className="mr-2" /> Download .docx
-                        </button>
+                    {user && user.role === 'admin' && (
+                        <>
+                            {currentJobDetails?.full_transcript && (
+                                <button
+                                    onClick={() => handleIngestDocument('full_transcript')}
+                                    disabled={
+                                        loadingIngestionStatus ||
+                                        ingestionStatus.full_transcript === 'COMPLETED' ||
+                                        ingestionStatus.full_transcript === 'PROCESSING'
+                                    }
+                                    className={`
+                                        px-4 py-2 rounded-md font-semibold flex items-center transition-colors duration-200
+                                        ${
+                                            (loadingIngestionStatus || ingestionStatus.full_transcript === 'COMPLETED' || ingestionStatus.full_transcript === 'PROCESSING')
+                                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                        }
+                                    `}
+                                >
+                                    {(ingestionStatus.full_transcript === 'PROCESSING' || loadingIngestionStatus) ? <Loader size={18} className="animate-spin mr-2" /> : <BookOpen size={18} className="mr-2" />}
+                                    {ingestionStatus.full_transcript === 'COMPLETED' ? 'Ingested' : 'Ingest Raw Transcript'}
+                                </button>
+                            )}
+
+                            <button
+                                onClick={handleOpenGenerateMinutesModal}
+                                disabled={!canGenerateMinutes || isGeneratingMinutes}
+                                className={`
+                                    px-4 py-2 rounded-md font-semibold flex items-center transition-colors duration-200
+                                    ${(!canGenerateMinutes || isGeneratingMinutes) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}
+                                `}
+                            >
+                                {isGeneratingMinutes ? <Loader size={18} className="animate-spin mr-2" /> : <ArrowRight size={18} className="mr-2" />}
+                                {currentJobDetails?.meeting_minutes ? 'Regenerate Minutes' : 'Generate Minutes'}
+                            </button>
+
+                            {currentJobDetails?.meeting_minutes && (
+                                <button
+                                    onClick={() => handleIngestDocument('meeting_minutes')}
+                                    disabled={
+                                        loadingIngestionStatus ||
+                                        ingestionStatus.meeting_minutes === 'COMPLETED' ||
+                                        ingestionStatus.meeting_minutes === 'PROCESSING'
+                                    }
+                                    className={`
+                                        px-4 py-2 rounded-md font-semibold flex items-center transition-colors duration-200
+                                        ${
+                                            (loadingIngestionStatus || ingestionStatus.meeting_minutes === 'COMPLETED' || ingestionStatus.meeting_minutes === 'PROCESSING')
+                                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                : 'bg-green-600 text-white hover:bg-green-700'
+                                        }
+                                    `}
+                                >
+                                    {(ingestionStatus.meeting_minutes === 'PROCESSING' || loadingIngestionStatus) ? <Loader size={18} className="animate-spin mr-2" /> : <BookOpen size={18} className="mr-2" />}
+                                    {ingestionStatus.meeting_minutes === 'COMPLETED' ? 'Ingested' : 'Ingest Meeting Minutes'}
+                                </button>
+                            )}
+
+                            {currentJobDetails?.meeting_minutes && (
+                                <button
+                                    onClick={() => handleDownloadMinutesDocx(currentJobDetails.id, `minutes_${currentJobDetails.id}.docx`)}
+                                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 flex items-center justify-center transition-colors duration-200"
+                                >
+                                    <Download size={18} className="mr-2" /> Download .docx
+                                </button>
+                            )}
+                        </>
                     )}
                 </div>
             </div>

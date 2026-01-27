@@ -1,0 +1,80 @@
+# Database Schema Explanation
+
+This document explains the purpose of each table in the application's database schema.
+
+---
+
+### 1. `users`
+
+*   **Purpose:** This is the core table for user accounts. It stores essential information required for a user to log in and interact with the system, such as their `username`, `email`, and a securely hashed `password`.
+*   **Why we need it:** We need this table for authentication (verifying a user's identity when they log in) and to have a central record for every user in the system. Each user is assigned a role, which connects them to the permissions system.
+
+---
+
+### 2. `roles`
+
+*   **Purpose:** This table defines the different user roles available, such as "admin" and "user". Each role represents a set of capabilities.
+*   **Why we need it:** This is the foundation of Role-Based Access Control (RBAC). Instead of assigning permissions to each user one by one, we assign them to roles. This makes managing user permissions much simpler and more scalable.
+
+---
+
+### 3. `permissions`
+
+*   **Purpose:** This table lists every specific action that can be controlled within the application (e.g., "ingest_documents", "read_documents", "delete_users").
+*   **Why we need it:** It allows for very granular control over what users can do. By checking against these permissions in the code, we can easily manage access to features without hard-coding role names, making the system more flexible.
+
+---
+
+### 4. `role_permissions`
+
+*   **Purpose:** This is a "junction" table that links the `roles` and `permissions` tables together. It creates a many-to-many relationship, meaning a single role can have many permissions, and a single permission can be assigned to many different roles.
+*   **Why we need it:** This table is the glue for our RBAC system. It's what allows us to define exactly what a "user" can do versus what an "admin" can do.
+
+---
+
+### 5. `transcription_jobs`
+
+*   **Purpose:** This table tracks the progress and stores the results of audio transcriptions. When a user uploads an audio file for processing, a record is created here.
+*   **Why we need it:** It holds the status of the job (`PENDING`, `PROCESSING`, `COMPLETED`), the final text of the full transcript, and the AI-generated meeting minutes. This is essential for managing these long-running background tasks and retrieving their output.
+
+---
+
+### 6. `documents`
+
+*   **Purpose:** This table is the central catalog for our Retrieval-Augmented Generation (RAG) knowledge base. It stores metadata for every piece of information that can be searched by the AI.
+*   **Why we need it:** It tracks the `filename`, `upload_date`, `status` (`PENDING`, `INDEXING`, `COMPLETED`), and importantly, the `document_type` (`general_document`, `full_transcript`, `meeting_minutes`). This allows us to manage all indexed content and filter it correctly in the "Ingestion Hub".
+
+---
+
+### 7. `document_chunks`
+
+*   **Purpose:** This table is the heart of the RAG system's "memory". To make searching efficient, large documents from the `documents` table are broken down into smaller "chunks". This table stores the text content of each chunk.
+*   **Why we need it:** Crucially, this table also stores the vector `embedding` for each chunk. A vector embedding is a numerical representation of the text. By comparing the vector of a user's question to the vectors of all the chunks, the AI can find the most semantically relevant information to answer the question, even if the keywords don't match exactly.
+
+---
+
+### 8. `chats`
+
+*   **Purpose:** This table defines a single chat session or conversation. Each time a user starts a new chat, a record is created here and linked to their `user_id`.
+*   **Why we need it:** It allows us to keep different conversations separate and to maintain a history of all the chat sessions a user has had.
+
+---
+
+### 9. `chat_messages`
+
+*   **Purpose:** This table stores every individual message sent within every chat session. Each message is linked to a `chat_id`.
+*   **Why we need it:** It records the `role` (who sent the message, either "user" or "assistant") and the `content` of the message. This is essential for displaying the chat history to the user and for providing the conversation context back to the AI so it can remember what was said previously in the conversation.
+
+---
+
+### 10. `message_feedback`
+
+*   **Purpose:** This table is used to collect user feedback on the AI's responses.
+*   **Why we need it:** When a user marks an AI message as good or bad, or provides a correction, that information is stored here. This data is invaluable for future improvements to the AI model's accuracy and performance.
+
+---
+
+### 11. `alembic_version`
+
+*   **Purpose:** This table is used internally by the Alembic database migration tool. It contains only one row, which stores a version number.
+*   **Why we need it:** It allows us to manage changes to the database schema over time. When we need to add a table or a column, we create a migration script. Alembic uses this table to know which scripts have already been applied, making database updates automated and safe.
