@@ -44,7 +44,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY environment variable not set.")
 
-GEMINI_TRANSCRIPTION_MODEL = "gemini-2.5-pro" # As per user's request
+GEMINI_TRANSCRIPTION_MODEL = "gemini-2.5-flash" # As per user's request
 UPLOAD_DIR = Path("/app/uploads") # Matches the FastAPI app
 
 # --- Prompt Templates for Minutes Generation ---

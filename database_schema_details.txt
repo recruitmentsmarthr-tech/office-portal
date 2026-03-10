@@ -1,0 +1,124 @@
+# Database Schema Details
+
+This document provides a detailed breakdown of each table in the project's database.
+
+---
+
+### Table: `users`
+
+Stores user account information.
+
+- **id**: (Integer, Primary Key) - Unique identifier for each user.
+- **username**: (String, Unique) - The user's chosen username.
+- **email**: (String, Unique) - The user's email address.
+- **hashed_password**: (String) - The user's password, hashed for security.
+- **role_id**: (Integer, Foreign Key to `roles.id`) - Links the user to a specific role in the `roles` table.
+
+---
+
+### Table: `roles`
+
+Defines the roles that can be assigned to users (e.g., 'Admin', 'Viewer').
+
+- **id**: (Integer, Primary Key) - Unique identifier for each role.
+- **name**: (String, Unique) - The name of the role.
+
+---
+
+### Table: `permissions`
+
+Defines specific permissions that can be granted (e.g., 'upload_document', 'delete_user').
+
+- **id**: (Integer, Primary Key) - Unique identifier for each permission.
+- **name**: (String, Unique) - The name of the permission.
+
+---
+
+### Table: `role_permissions`
+
+This is a "join table" that maps roles to permissions, creating a many-to-many relationship.
+
+- **role_id**: (Integer, Primary Key, Foreign Key to `roles.id`) - The ID of the role.
+- **permission_id**: (Integer, Primary Key, Foreign Key to `permissions.id`) - The ID of the permission.
+
+---
+
+### Table: `documents`
+
+Stores metadata for each uploaded file that is part of the RAG system.
+
+- **id**: (Integer, Primary Key) - Unique identifier for the document.
+- **filename**: (String) - The original name of the uploaded file.
+- **upload_date**: (DateTime) - Timestamp of when the document was uploaded.
+- **status**: (String Enum) - The current processing status of the document. Can be `PENDING`, `INDEXING`, `COMPLETED`, or `FAILED`.
+- **collection**: (String) - The knowledge base this document belongs to, either `corporate` or `meetings`.
+- **source_transcription_id**: (Integer, Foreign Key to `transcription_jobs.id`) - If the document came from a transcription, this links back to the original job.
+- **document_type**: (String) - The specific type of document, e.g., 'full_transcript', 'meeting_minutes', 'general_document'.
+
+---
+
+### Table: `document_chunks`
+
+Contains the individual text chunks created from a parent document for the RAG system.
+
+- **id**: (Integer, Primary Key) - Unique identifier for the chunk.
+- **document_id**: (Integer, Foreign Key to `documents.id`) - Links the chunk back to its parent document.
+- **content**: (Text) - The actual text content of this specific chunk.
+- **embedding**: (Vector) - The 768-dimension numerical representation (vector embedding) of the content, used for similarity searches.
+- **chunk_metadata**: (JSON) - Any additional metadata associated with the chunk (e.g., page number).
+
+---
+
+### Table: `transcription_jobs`
+
+Tracks the status and results of audio/video transcription tasks.
+
+- **id**: (Integer, Primary Key) - Unique identifier for the transcription job.
+- **user_id**: (Integer, Foreign Key to `users.id`) - The user who initiated the job.
+- **original_filename**: (String) - The name of the file that was uploaded for transcription.
+- **saved_file_name**: (String) - The actual filename as it is stored on the server's disk.
+- **status**: (String Enum) - The current status of the job: `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, `CANCELLED`.
+- **progress_percent**: (Integer) - The completion percentage of the job.
+- **progress_text**: (String) - A human-readable status message (e.g., "Transcribing...").
+- **full_transcript**: (Text) - The full transcribed text, available when the job is completed.
+- **meeting_minutes**: (Text) - An AI-generated summary or minutes of the transcript.
+- **meeting_name**: (String) - A user-provided name for the meeting/transcription.
+- **error_message**: (Text) - Stores any error details if the job failed.
+- **celery_task_id**: (String) - The ID of the background task (Celery) processing this job.
+- **created_at**: (DateTime) - Timestamp of when the job was created.
+- **updated_at**: (DateTime) - Timestamp of the last update to the job.
+
+---
+
+### Table: `chats`
+
+Stores metadata for a single chat session or conversation.
+
+- **id**: (Integer, Primary Key) - Unique identifier for the chat session.
+- **user_id**: (Integer, Foreign Key to `users.id`) - The user who owns this chat session.
+- **collection**: (String) - The knowledge base this chat is interacting with, either `corporate` or `meetings`.
+- **created_at**: (DateTime) - Timestamp of when the chat session was started.
+- **is_deleted**: (Boolean) - A flag to mark the chat as deleted without permanently removing it.
+
+---
+
+### Table: `chat_messages`
+
+Stores an individual message within a chat session.
+
+- **id**: (Integer, Primary Key) - Unique identifier for the message.
+- **chat_id**: (Integer, Foreign Key to `chats.id`) - Links the message to its parent chat session.
+- **role**: (String) - The author of the message, either `user` or `assistant`.
+- **content**: (Text) - The text content of the message.
+- **created_at**: (DateTime) - Timestamp of when the message was created.
+
+---
+
+### Table: `message_feedback`
+
+Stores user-provided feedback on an assistant's message.
+
+- **id**: (Integer, Primary Key) - Unique identifier for the feedback entry.
+- **message_id**: (Integer, Foreign Key to `chat_messages.id`, Unique) - Links the feedback to a specific message.
+- **rating**: (String) - The user's rating (e.g., 'good', 'bad').
+- **correction**: (Text) - Any corrective text provided by the user.
